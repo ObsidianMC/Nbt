@@ -11,6 +11,12 @@
     <RootNamespace>Obsidian.$(MSBuildProjectName)</RootNamespace>
     <RepositoryUrl>https://www.github.com/ObsidianMC/Nbt</RepositoryUrl>
     <PackageProjectUrl>https://www.github.com/ObsidianMC/Nbt</PackageProjectUrl>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Folder Include="Serialization\" />
+    <Folder Include="Snbt\" />
+  </ItemGroup>
 
 </Project>

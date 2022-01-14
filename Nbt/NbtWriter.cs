@@ -1,480 +1,139 @@
-﻿using System.IO;
-using System.IO.Compression;
+﻿using Obsidian.Nbt.Utilities;
 
 namespace Obsidian.Nbt;
 
-public sealed partial class NbtWriter : IDisposable, IAsyncDisposable
+[DebuggerDisplay($"{{{nameof(DebuggerDisplay)},nq}}")]
+public partial struct NbtWriter : IAsyncDisposable, IDisposable
 {
-    private NbtTagType? expectedListType;
+    private const int DefaultBufferSize = 256;
 
-    private Stack<Node> rootNodes = new();
+    private readonly ArrayPool<byte> arrayPool;
+    private readonly Stream stream;
+    private readonly int bufferSize;
+    private byte[] buffer;
+    private int index;
 
-    private int listSize;
-    private int listIndex;
-
-    public NbtTagType RootType => this.rootNodes.Count > 0 ? this.rootNodes.Peek().Type : NbtTagType.Unknown;
-
-    public Stream BaseStream { get; }
-
-    public NbtWriter(Stream outstream, NbtCompression compressionMode = NbtCompression.None)
+    public NbtWriter(Stream outputStream, int bufferSize = DefaultBufferSize) : this(outputStream, FakeArrayPool.Instance, bufferSize)
     {
-        if (compressionMode == NbtCompression.GZip)
-            this.BaseStream = new GZipStream(outstream, CompressionMode.Compress);
-        else if (compressionMode == NbtCompression.ZLib)
-            this.BaseStream = new ZLibStream(outstream, CompressionMode.Compress);
-        else
-            this.BaseStream = outstream;
     }
 
-    public NbtWriter(Stream outstream, string name)
+    public NbtWriter(Stream outputStream, ArrayPool<byte> arrayPool, int bufferSize = DefaultBufferSize)
     {
-        this.BaseStream = outstream;
+        ArgumentNullException.ThrowIfNull(outputStream);
+        ArgumentNullException.ThrowIfNull(arrayPool);
+        ThrowHelper.ThrowOutOfRangeException_IfNegative(bufferSize);
+        this.bufferSize = Math.Min(bufferSize, DefaultBufferSize);
 
-        this.Write(NbtTagType.Compound);
-        this.WriteStringInternal(name);
-
-        this.AddRootTag(new Node { Type = NbtTagType.Compound });
+        stream = outputStream;
+        this.arrayPool = arrayPool;
+        buffer = arrayPool.Rent(this.bufferSize);
+        index = 0;
     }
 
-    public NbtWriter(Stream outstream, NbtCompression compressionMode, string name)
+    internal NbtWriter(byte[] buffer)
     {
-        if (compressionMode == NbtCompression.GZip)
-            this.BaseStream = new GZipStream(outstream, CompressionMode.Compress);
-        else if (compressionMode == NbtCompression.ZLib)
-            this.BaseStream = new ZLibStream(outstream, CompressionMode.Compress);
-        else
-            this.BaseStream = outstream;
-
-        this.Write(NbtTagType.Compound);
-        this.WriteStringInternal(name);
-
-        this.AddRootTag(new Node { Type = NbtTagType.Compound });
+        this.buffer = buffer;
+        bufferSize = buffer.Length;
+        stream = null!;
+        arrayPool = null!;
+        index = 0;
     }
 
-    private void AddRootTag(Node node)
+    internal void Skip(int advanceBy)
     {
-        if (this.RootType == NbtTagType.List)
+        index += advanceBy;
+    }
+
+    private Span<byte> GetSpan(int size)
+    {
+        if (size + index < bufferSize)
         {
-            this.rootNodes.Peek().ListIndex = this.listIndex;
-            this.listIndex = 0;
+            return UnsafeGetSpanAndAdvance(size);
         }
 
-        this.rootNodes.Push(node);
+        Flush();
+
+        if (size >= bufferSize)
+        {
+            arrayPool.Return(buffer);
+            buffer = arrayPool.Rent(size);
+        }
+
+        return UnsafeGetSpanAndAdvance(size);
     }
 
-    public void WriteCompoundStart(string name = "")
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private Span<byte> UnsafeGetSpanAndAdvance(int size)
     {
-        if(this.rootNodes.Count > 0)
-            this.Validate(name, NbtTagType.Compound);
+        Span<byte> span = MemoryMarshal.CreateSpan(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(buffer), (nint)(uint)index), size);
+        index += size;
+        return span;
+    }
 
-        if (this.RootType == NbtTagType.List)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void WriteByteDirect(ref byte value)
+    {
+        Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(buffer), index) = value;
+        index++;
+    }
+
+    private ref byte GetRef(int requestedSize)
+    {
+        if (requestedSize + index < bufferSize)
         {
-            this.AddRootTag(new Node { Type = NbtTagType.Compound });
+            return ref UnsafeGetRefAndAdvance(requestedSize);
+        }
+
+        Flush();
+
+        if (requestedSize >= bufferSize)
+        {
+            arrayPool.Return(buffer);
+            buffer = arrayPool.Rent(requestedSize);
+        }
+
+        return ref UnsafeGetRefAndAdvance(requestedSize);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private ref byte UnsafeGetRefAndAdvance(int advanceBy)
+    {
+        ref byte reference = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(buffer), index);
+        index += advanceBy;
+        return ref reference;
+    }
+
+    private void Flush()
+    {
+        if (index == 0)
             return;
-        }
 
-        this.AddRootTag(new Node { Type = NbtTagType.Compound });
-
-        this.Write(NbtTagType.Compound);
-        this.WriteStringInternal(name);
+        ReadOnlySpan<byte> bufferedData = MemoryMarshal.CreateReadOnlySpan(ref MemoryMarshal.GetArrayDataReference(buffer), index);
+        stream.Write(bufferedData);
+        index = 0;
     }
 
-    public void WriteListStart(string name, NbtTagType listType, int length, bool writeName = true)
+    private async ValueTask FlushAsync()
     {
-        this.Validate(name, NbtTagType.List);
-
-        this.AddRootTag(new Node { Type = NbtTagType.List, ListSize = length, ExpectedListType = listType });
-
-        this.listSize = length;
-        this.expectedListType = listType;
-
-        this.Write(NbtTagType.List);
-
-        if (writeName)
-            this.WriteStringInternal(name);
-
-        this.Write(listType);
-        this.WriteIntInternal(length);
-    }
-
-    public void EndList()
-    {
-        if (this.listIndex < this.listSize)
-            throw new InvalidOperationException("List cannot end because its size is smaller than the pre-defined size.");
-
-        var tag = this.rootNodes.Pop();
-        if (tag.Type != NbtTagType.List)
-            throw new InvalidOperationException();
-
-        if (this.CheckIfList())
+        if (index == 0)
             return;
 
-        this.listSize = 0;
-        this.listIndex = 0;
-        this.expectedListType = null;
+        await stream.WriteAsync(buffer.AsMemory(0, index));
+        index = 0;
     }
 
-    public void EndCompound()
+    public void Dispose()
     {
-        var tag = this.rootNodes.Pop();
-        if (tag.Type != NbtTagType.Compound)
-            throw new InvalidOperationException();
-
-        this.CheckIfList();
-
-        this.Write(NbtTagType.End);
+        Flush();
+        arrayPool.Return(buffer);
     }
 
-    private bool CheckIfList()
+    public async ValueTask DisposeAsync()
     {
-        if (this.rootNodes.Count <= 0)
-            return false;
-
-        var newRoot = this.rootNodes.Peek();
-
-        if (newRoot.Type == NbtTagType.List)
-        {
-            this.listSize = newRoot.ListSize.Value;
-            this.listIndex = newRoot.ListIndex.Value;
-            this.expectedListType = newRoot.ExpectedListType.Value;
-
-            return true;
-        }
-
-        return false;
+        await FlushAsync();
+        arrayPool.Return(buffer);
     }
 
-    public void WriteTag(INbtTag tag)
-    {
-        var name = tag.Name;
-
-        switch (tag.Type)
-        {
-            case NbtTagType.End:
-                throw new InvalidOperationException("Use writer.EndCompound() instead.");
-            case NbtTagType.Byte:
-                if (tag is NbtTag<byte> byteTag)
-                {
-                    this.WriteByte(name, byteTag.Value);
-                }
-                else if (tag is NbtTag<bool> boolValue)
-                {
-                    this.WriteByte(name, (byte)(boolValue.Value ? 1 : 0));
-                }
-                break;
-            case NbtTagType.Short:
-                this.WriteShort(name, ((NbtTag<short>)tag).Value);
-                break;
-            case NbtTagType.Int:
-                this.WriteInt(name, ((NbtTag<int>)tag).Value);
-                break;
-            case NbtTagType.Long:
-                this.WriteLong(name, ((NbtTag<long>)tag).Value);
-                break;
-            case NbtTagType.Float:
-                this.WriteFloat(name, ((NbtTag<float>)tag).Value);
-                break;
-            case NbtTagType.Double:
-                this.WriteDouble(name, ((NbtTag<double>)tag).Value);
-                break;
-            case NbtTagType.String:
-                this.WriteString(name, ((NbtTag<string>)tag).Value);
-                break;
-            case NbtTagType.List:
-                var list = (NbtList)tag;
-
-                this.WriteListStart(name, list.ListType, list.Count);
-
-                foreach (var child in list)
-                    this.WriteListTag(child);
-
-                this.EndList();
-                break;
-            case NbtTagType.Compound:
-                this.WriteCompoundStart(name);
-
-                foreach (var (_, child) in (NbtCompound)tag)
-                    this.WriteTag(child);
-
-                this.EndCompound();
-                break;
-            case NbtTagType.ByteArray:
-            case NbtTagType.IntArray:
-            case NbtTagType.LongArray:
-                this.WriteArray(tag);
-                break;
-            case NbtTagType.Unknown:
-            default:
-                throw new InvalidOperationException("Unknown tag type");
-        }
-    }
-
-    public void WriteListTag(INbtTag tag)
-    {
-        var name = tag.Name;
-
-        switch (tag.Type)
-        {
-            case NbtTagType.End:
-                throw new InvalidOperationException("Use writer.EndCompound() instead.");
-            case NbtTagType.Byte:
-                if (tag is NbtTag<byte> byteTag)
-                {
-                    this.WriteByte(byteTag.Value);
-                }
-                else if (tag is NbtTag<bool> boolValue)
-                {
-                    this.WriteByte((byte)(boolValue.Value ? 1 : 0));
-                }
-                break;
-            case NbtTagType.Short:
-                this.WriteShort(((NbtTag<short>)tag).Value);
-                break;
-            case NbtTagType.Int:
-                this.WriteInt(((NbtTag<int>)tag).Value);
-                break;
-            case NbtTagType.Long:
-                this.WriteLong(((NbtTag<long>)tag).Value);
-                break;
-            case NbtTagType.Float:
-                this.WriteFloat(((NbtTag<float>)tag).Value);
-                break;
-            case NbtTagType.Double:
-                this.WriteDouble(((NbtTag<double>)tag).Value);
-                break;
-            case NbtTagType.String:
-                this.WriteString(((NbtTag<string>)tag).Value);
-                break;
-            case NbtTagType.List:
-                var list = (NbtList)tag;
-
-                this.WriteListStart(name, list.ListType, list.Count, false);
-
-                foreach (var child in list)
-                    this.WriteListTag(child);
-
-                this.EndList();
-                break;
-            case NbtTagType.Compound:
-                this.WriteCompoundStart();
-
-                foreach (var (_, child) in (NbtCompound)tag)
-                    this.WriteTag(child);
-
-                this.EndCompound();
-                break;
-            case NbtTagType.ByteArray:
-            case NbtTagType.IntArray:
-            case NbtTagType.LongArray:
-                this.WriteArray(tag);
-                break;
-            case NbtTagType.Unknown:
-            default:
-                throw new InvalidOperationException("Unknown tag type");
-        }
-    }
-
-    public void WriteArray(INbtTag array)
-    {
-        this.Validate(array.Name, array.Type);
-
-        if (array is NbtArray<int> intArray)
-        {
-            this.Write(NbtTagType.IntArray);
-            this.WriteStringInternal(array.Name);
-            this.WriteIntInternal(intArray.Count);
-
-            for (int i = 0; i < intArray.Count; i++)
-                this.WriteIntInternal(intArray[i]);
-        }
-        else if (array is NbtArray<long> longArray)
-        {
-            this.Write(NbtTagType.LongArray);
-            this.WriteStringInternal(array.Name);
-            this.WriteIntInternal(longArray.Count);
-
-            for (int i = 0; i < longArray.Count; i++)
-                this.WriteLongInternal(longArray[i]);
-        }
-        else if (array is NbtArray<byte> byteArray)
-        {
-            this.Write(NbtTagType.ByteArray);
-            this.WriteStringInternal(array.Name);
-            this.WriteIntInternal(byteArray.Count);
-
-            for (int i = 0; i < byteArray.Count; i++)
-                this.BaseStream.Write(byteArray.GetArray());
-        }
-    }
-
-    public void WriteString(string value)
-    {
-        this.Validate(null, NbtTagType.String);
-        this.WriteStringInternal(value);
-    }
-
-    public void WriteString(string name, string value)
-    {
-        this.Validate(name, NbtTagType.String);
-
-        this.Write(NbtTagType.String);
-        this.WriteStringInternal(name);
-        this.WriteStringInternal(value);
-    }
-
-    public void WriteByte(byte value)
-    {
-        this.Validate(null, NbtTagType.Byte);
-        this.WriteByteInternal(value);
-    }
-
-    public void WriteByte(string name, byte value)
-    {
-        this.Validate(name, NbtTagType.Byte);
-
-        this.Write(NbtTagType.Byte);
-        this.WriteStringInternal(name);
-        this.WriteByteInternal(value);
-    }
-
-    public void WriteBool(bool value)
-    {
-        this.Validate(null, NbtTagType.Byte);
-        this.WriteByteInternal((byte)(value ? 1 : 0));
-    }
-
-    public void WriteBool(string name, bool value)
-    {
-        this.Validate(name, NbtTagType.Byte);
-
-        this.Write(NbtTagType.Byte);
-        this.WriteStringInternal(name);
-        this.WriteByteInternal((byte)(value ? 1 : 0));
-    }
-
-    public void WriteShort(short value)
-    {
-        this.Validate(null, NbtTagType.Short);
-        this.WriteShortInternal(value);
-    }
-
-    public void WriteShort(string name, short value)
-    {
-        this.Validate(name, NbtTagType.Short);
-
-        this.Write(NbtTagType.Short);
-        this.WriteStringInternal(name);
-        this.WriteShortInternal(value);
-    }
-
-    public void WriteInt(int value)
-    {
-        this.Validate(null, NbtTagType.Int);
-        this.WriteIntInternal(value);
-    }
-
-    public void WriteInt(string name, int value)
-    {
-        this.Validate(name, NbtTagType.Int);
-
-        this.Write(NbtTagType.Int);
-        this.WriteStringInternal(name);
-        this.WriteIntInternal(value);
-    }
-
-    public void WriteLong(long value)
-    {
-        this.Validate(null, NbtTagType.Long);
-        this.WriteLongInternal(value);
-    }
-
-    public void WriteLong(string name, long value)
-    {
-        this.Validate(name, NbtTagType.Long);
-
-        this.Write(NbtTagType.Long);
-        this.WriteStringInternal(name);
-        this.WriteLongInternal(value);
-    }
-
-    public void WriteFloat(float value)
-    {
-        this.Validate(null, NbtTagType.Float);
-        this.WriteFloatInternal(value);
-    }
-
-    public void WriteFloat(string name, float value)
-    {
-        this.Validate(name, NbtTagType.Float);
-
-        this.Write(NbtTagType.Float);
-        this.WriteStringInternal(name);
-        this.WriteFloatInternal(value);
-    }
-
-    public void WriteDouble(double value)
-    {
-        this.Validate(null, NbtTagType.Double);
-        this.WriteDoubleInternal(value);
-    }
-
-    public void WriteDouble(string name, double value)
-    {
-        this.Validate(name, NbtTagType.Double);
-
-        this.Write(NbtTagType.Double);
-        this.WriteStringInternal(name);
-
-        this.WriteDoubleInternal(value);
-    }
-
-    public void Validate(string name, NbtTagType type)
-    {
-        if (this.RootType == NbtTagType.List)
-        {
-            if (!string.IsNullOrWhiteSpace(name))
-                throw new InvalidOperationException($"Use the Write{type}({type.ToString().ToLower()} value) method when writing to lists");
-
-            if (this.expectedListType != type)
-                throw new InvalidOperationException($"Expected list type: {this.expectedListType}. Got: {type}");
-            else if (!string.IsNullOrEmpty(name))
-                throw new InvalidOperationException("Tags inside lists must be nameless.");
-            else if (this.listIndex > this.listSize)
-                throw new IndexOutOfRangeException("Exceeded pre-defined list size");
-
-            this.listIndex++;
-        }
-        else if (string.IsNullOrWhiteSpace(name))
-            throw new ArgumentException($"Tags inside a compound tag must have a name. Tag({type})");
-    }
-
-    public void TryFinish()
-    {
-        if (this.rootNodes.Count > 0)
-            throw new InvalidOperationException("Unable to close writer. Some tags have yet to be closed.");//TODO maybe more info here??
-
-        this.BaseStream.Flush();
-    }
-
-    public async Task TryFinishAsync()
-    {
-        if (this.rootNodes.Count > 0)
-            throw new InvalidOperationException("Unable to close writer. Some tags have yet to be closed.");//TODO maybe more info here??
-
-        await this.BaseStream.FlushAsync();
-    }
-
-    public ValueTask DisposeAsync() => this.BaseStream.DisposeAsync();
-    public void Dispose() => this.BaseStream.Dispose();
-
-    private class Node
-    {
-        public NbtTagType Type { get; set; }
-
-        public int? ListSize { get; set; }
-
-        public int? ListIndex { get; set; }
-
-        public NbtTagType? ExpectedListType { get; set; }
-    }
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private string DebuggerDisplay => $"DataPending = {index > 0}";
 }
