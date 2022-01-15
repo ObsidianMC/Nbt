@@ -57,25 +57,22 @@ internal static class RefReader
         Unsafe.CopyBlockUnaligned(ref destination, ref source, (uint)count);
     }
 
-    internal static unsafe void ReadInts(ref byte source, ref byte destination, int count)
+    internal static void ReadInts(ref byte source, ref byte destination, int count)
     {
-        int* sPtr = (int*)Unsafe.AsPointer(ref source);
-        int* dPtr = (int*)Unsafe.AsPointer(ref destination);
-
         int i = 0;
         if (Avx2.IsSupported)
         {
             int end = count - 4;
             for (; i <= end; i += 4)
             {
-                Vector256<int> vector = Avx2.LoadVector256(sPtr);
+                Vector256<int> vector = Unsafe.ReadUnaligned<Vector256<int>>(ref source);
                 Vector256<int> shuffled = Avx2.Shuffle(
                     vector.AsByte(),
                     Vector256.Create((byte)3, 2, 1, 0, 7, 6, 5, 4, 11, 10, 9, 8, 15, 14, 13, 12, 19, 18, 17, 16, 23, 22, 21, 20, 27, 26, 25, 24, 31, 30, 29, 28)
                     ).AsInt32();
-                Avx2.Store(dPtr, shuffled);
-                sPtr++;
-                dPtr++;
+                Unsafe.WriteUnaligned(ref destination, shuffled);
+                source = ref Unsafe.Add(ref source, 32);
+                destination = ref Unsafe.Add(ref destination, 32);
             }
         }
         else if (Ssse3.IsSupported)
@@ -83,44 +80,47 @@ internal static class RefReader
             int end = count - 2;
             for (; i <= end; i += 2)
             {
-                Vector128<int> vector = Ssse3.LoadVector128(sPtr);
+                Vector128<int> vector = Unsafe.ReadUnaligned<Vector128<int>>(ref source);
                 Vector128<int> shuffled = Ssse3.Shuffle(
                     vector.AsByte(),
                     Vector128.Create((byte)3, 2, 1, 0, 7, 6, 5, 4, 11, 10, 9, 8, 15, 14, 13, 12)
                     ).AsInt32();
-                Ssse3.Store(dPtr, shuffled);
-                sPtr++;
-                dPtr++;
+                Unsafe.WriteUnaligned(ref destination, vector);
+                source = ref Unsafe.Add(ref source, 16);
+                destination = ref Unsafe.Add(ref destination, 16);
             }
         }
 
-        count -= i;
-        i = 0;
-        for (; i < count; i++)
+        ReadIntsScalar(ref Unsafe.As<byte, int>(ref source), ref Unsafe.As<byte, int>(ref destination), count - i);
+    }
+
+    private static void ReadIntsScalar(ref int source, ref int destination, int count)
+    {
+        ref int end = ref Unsafe.Add(ref source, count);
+        while (Unsafe.IsAddressLessThan(ref source, ref end))
         {
-            dPtr[i] = BinaryPrimitives.ReverseEndianness(sPtr[i]);
+            Unsafe.WriteUnaligned(ref Unsafe.As<int, byte>(ref destination), BinaryPrimitives.ReverseEndianness(source));
+            destination = ref Unsafe.Add(ref destination, 1);
+            source = ref Unsafe.Add(ref source, 1);
         }
     }
 
     internal static unsafe void ReadLongs(ref byte source, ref byte destination, int count)
     {
-        long* sPtr = (long*)Unsafe.AsPointer(ref source);
-        long* dPtr = (long*)Unsafe.AsPointer(ref destination);
-
         int i = 0;
         if (Avx2.IsSupported)
         {
             int end = count - 4;
             for (; i <= end; i += 4)
             {
-                Vector256<long> vector = Avx2.LoadVector256(sPtr);
+                Vector256<long> vector = Unsafe.ReadUnaligned<Vector256<long>>(ref source);
                 Vector256<long> shuffled = Avx2.Shuffle(
                     vector.AsByte(),
                     Vector256.Create((byte)7, 6, 5, 4, 3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9, 8, 23, 22, 21, 20, 19, 18, 17, 16, 31, 30, 29, 28, 27, 26, 25, 24)
                     ).AsInt64();
-                Avx2.Store(dPtr, shuffled);
-                sPtr++;
-                dPtr++;
+                Unsafe.WriteUnaligned(ref destination, shuffled);
+                source = ref Unsafe.Add(ref source, 32);
+                destination = ref Unsafe.Add(ref destination, 32);
             }
         }
         else if (Ssse3.IsSupported)
@@ -128,22 +128,28 @@ internal static class RefReader
             int end = count - 2;
             for (; i <= end; i += 2)
             {
-                Vector128<long> vector = Ssse3.LoadVector128(sPtr);
+                Vector128<long> vector = Unsafe.ReadUnaligned<Vector128<long>>(ref source);
                 Vector128<long> shuffled = Ssse3.Shuffle(
                     vector.AsByte(),
                     Vector128.Create((byte)7, 6, 5, 4, 3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9, 8)
                     ).AsInt64();
-                Ssse3.Store(dPtr, shuffled);
-                sPtr++;
-                dPtr++;
+                Unsafe.WriteUnaligned(ref destination, shuffled);
+                source = ref Unsafe.Add(ref source, 16);
+                destination = ref Unsafe.Add(ref destination, 16);
             }
         }
 
-        count -= i;
-        i = 0;
-        for (; i < count; i++)
+        ReadLongsScalar(ref Unsafe.As<byte, long>(ref source), ref Unsafe.As<byte, long>(ref destination), count - i);
+    }
+
+    private static void ReadLongsScalar(ref long source, ref long destination, int count)
+    {
+        ref long end = ref Unsafe.Add(ref source, count);
+        while (Unsafe.IsAddressLessThan(ref source, ref end))
         {
-            dPtr[i] = BinaryPrimitives.ReverseEndianness(sPtr[i]);
+            Unsafe.WriteUnaligned(ref Unsafe.As<long, byte>(ref destination), BinaryPrimitives.ReverseEndianness(source));
+            destination = ref Unsafe.Add(ref destination, 1);
+            source = ref Unsafe.Add(ref source, 1);
         }
     }
 
