@@ -60,11 +60,6 @@ internal static class RefWriter
         Unsafe.WriteUnaligned(ref destination, value);
     }
 
-    internal static void WriteString(Span<byte> destination, ReadOnlySpan<char> value)
-    {
-        ModifiedUtf8.GetBytes(value, destination);
-    }
-
     internal static void WriteBytes(ref byte destination, ReadOnlySpan<byte> value)
     {
         Unsafe.CopyBlockUnaligned(ref destination, ref MemoryMarshal.GetReference(value), (uint)value.Length);

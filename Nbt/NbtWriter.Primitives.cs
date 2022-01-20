@@ -81,11 +81,10 @@ public partial struct NbtWriter
             return;
         }
 
-        int length = ModifiedUtf8.GetByteCount(value);
-        if (length > ushort.MaxValue)
+        if (!ModifiedUtf8.TryGetByteCount(value, out int length))
             ThrowHelper.ThrowInvalidOperationException_StringTooLong();
         WriteUShort((ushort)length);
-        RefWriter.WriteString(GetSpan(length), value);
+        ModifiedUtf8.GetBytesCommon(value, GetSpan(length));
     }
 
     public void WriteByte(string? name, byte value)

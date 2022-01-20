@@ -66,11 +66,14 @@ internal static class RefReader
             for (; i <= end; i += 4)
             {
                 Vector256<int> vector = Unsafe.ReadUnaligned<Vector256<int>>(ref source);
-                Vector256<int> shuffled = Avx2.Shuffle(
-                    vector.AsByte(),
-                    Vector256.Create((byte)3, 2, 1, 0, 7, 6, 5, 4, 11, 10, 9, 8, 15, 14, 13, 12, 19, 18, 17, 16, 23, 22, 21, 20, 27, 26, 25, 24, 31, 30, 29, 28)
-                    ).AsInt32();
-                Unsafe.WriteUnaligned(ref destination, shuffled);
+                if (BitConverter.IsLittleEndian)
+                {
+                    vector = Avx2.Shuffle(
+                        vector.AsByte(),
+                        Vector256.Create((byte)3, 2, 1, 0, 7, 6, 5, 4, 11, 10, 9, 8, 15, 14, 13, 12, 19, 18, 17, 16, 23, 22, 21, 20, 27, 26, 25, 24, 31, 30, 29, 28)
+                        ).AsInt32();
+                }
+                Unsafe.WriteUnaligned(ref destination, vector);
                 source = ref Unsafe.Add(ref source, 32);
                 destination = ref Unsafe.Add(ref destination, 32);
             }
@@ -81,10 +84,13 @@ internal static class RefReader
             for (; i <= end; i += 2)
             {
                 Vector128<int> vector = Unsafe.ReadUnaligned<Vector128<int>>(ref source);
-                Vector128<int> shuffled = Ssse3.Shuffle(
-                    vector.AsByte(),
-                    Vector128.Create((byte)3, 2, 1, 0, 7, 6, 5, 4, 11, 10, 9, 8, 15, 14, 13, 12)
-                    ).AsInt32();
+                if (BitConverter.IsLittleEndian)
+                {
+                    vector = Ssse3.Shuffle(
+                        vector.AsByte(),
+                        Vector128.Create((byte)3, 2, 1, 0, 7, 6, 5, 4, 11, 10, 9, 8, 15, 14, 13, 12)
+                        ).AsInt32();
+                }
                 Unsafe.WriteUnaligned(ref destination, vector);
                 source = ref Unsafe.Add(ref source, 16);
                 destination = ref Unsafe.Add(ref destination, 16);
@@ -99,7 +105,7 @@ internal static class RefReader
         ref int end = ref Unsafe.Add(ref source, count);
         while (Unsafe.IsAddressLessThan(ref source, ref end))
         {
-            Unsafe.WriteUnaligned(ref Unsafe.As<int, byte>(ref destination), BinaryPrimitives.ReverseEndianness(source));
+            Unsafe.WriteUnaligned(ref Unsafe.As<int, byte>(ref destination), BitConverter.IsLittleEndian ? BinaryPrimitives.ReverseEndianness(source) : source);
             destination = ref Unsafe.Add(ref destination, 1);
             source = ref Unsafe.Add(ref source, 1);
         }
@@ -114,11 +120,14 @@ internal static class RefReader
             for (; i <= end; i += 4)
             {
                 Vector256<long> vector = Unsafe.ReadUnaligned<Vector256<long>>(ref source);
-                Vector256<long> shuffled = Avx2.Shuffle(
-                    vector.AsByte(),
-                    Vector256.Create((byte)7, 6, 5, 4, 3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9, 8, 23, 22, 21, 20, 19, 18, 17, 16, 31, 30, 29, 28, 27, 26, 25, 24)
-                    ).AsInt64();
-                Unsafe.WriteUnaligned(ref destination, shuffled);
+                if (BitConverter.IsLittleEndian)
+                {
+                    vector = Avx2.Shuffle(
+                        vector.AsByte(),
+                        Vector256.Create((byte)7, 6, 5, 4, 3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9, 8, 23, 22, 21, 20, 19, 18, 17, 16, 31, 30, 29, 28, 27, 26, 25, 24)
+                        ).AsInt64();
+                }
+                Unsafe.WriteUnaligned(ref destination, vector);
                 source = ref Unsafe.Add(ref source, 32);
                 destination = ref Unsafe.Add(ref destination, 32);
             }
@@ -129,11 +138,14 @@ internal static class RefReader
             for (; i <= end; i += 2)
             {
                 Vector128<long> vector = Unsafe.ReadUnaligned<Vector128<long>>(ref source);
-                Vector128<long> shuffled = Ssse3.Shuffle(
-                    vector.AsByte(),
-                    Vector128.Create((byte)7, 6, 5, 4, 3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9, 8)
-                    ).AsInt64();
-                Unsafe.WriteUnaligned(ref destination, shuffled);
+                if (BitConverter.IsLittleEndian)
+                {
+                    vector = Ssse3.Shuffle(
+                        vector.AsByte(),
+                        Vector128.Create((byte)7, 6, 5, 4, 3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9, 8)
+                        ).AsInt64();
+                }
+                Unsafe.WriteUnaligned(ref destination, vector);
                 source = ref Unsafe.Add(ref source, 16);
                 destination = ref Unsafe.Add(ref destination, 16);
             }
@@ -147,7 +159,7 @@ internal static class RefReader
         ref long end = ref Unsafe.Add(ref source, count);
         while (Unsafe.IsAddressLessThan(ref source, ref end))
         {
-            Unsafe.WriteUnaligned(ref Unsafe.As<long, byte>(ref destination), BinaryPrimitives.ReverseEndianness(source));
+            Unsafe.WriteUnaligned(ref Unsafe.As<long, byte>(ref destination), BitConverter.IsLittleEndian ? BinaryPrimitives.ReverseEndianness(source) : source);
             destination = ref Unsafe.Add(ref destination, 1);
             source = ref Unsafe.Add(ref source, 1);
         }

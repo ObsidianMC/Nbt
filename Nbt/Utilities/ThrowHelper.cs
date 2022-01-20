@@ -44,4 +44,9 @@ internal class ThrowHelper
     {
         throw new InvalidOperationException("Tag type doesn't match requested data type.");
     }
+
+    internal static void ThrowException_InsufficientBufferSize()
+    {
+        throw new Exception("Acquired buffer did not have sufficient size.");
+    }
 }

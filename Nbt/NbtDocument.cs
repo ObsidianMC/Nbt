@@ -19,11 +19,16 @@ public sealed partial class NbtDocument
     [SkipLocalsInit]
     internal bool TryGetProperty(ReadOnlySpan<char> propertyName, int index, out NbtProperty property)
     {
-        int nameByteCount = ModifiedUtf8.GetByteCount(propertyName);
+        if (!ModifiedUtf8.TryGetByteCount(propertyName, out int nameByteCount))
+        {
+            property = default;
+            return false;
+        }
+
         byte[]? rentedArray = null;
         Span<byte> utf8name = nameByteCount <= 1024 ? stackalloc byte[1024] : (rentedArray = ArrayPool<byte>.Shared.Rent(nameByteCount));
         utf8name = utf8name[..nameByteCount];
-        ModifiedUtf8.GetBytes(propertyName, utf8name);
+        ModifiedUtf8.GetBytesCommon(propertyName, utf8name);
 
         PropertiesEnumerator enumerator = new(this, index);
         while (enumerator.MoveNext())

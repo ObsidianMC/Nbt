@@ -5,8 +5,6 @@ namespace Examples;
 
 internal class NbtDocumentExample : IExample
 {
-    public string? Description => $"";
-
     public void Run()
     {
         Stream dataStream = GetNbtBytes();
