@@ -5,7 +5,9 @@ VisualStudioVersion = 17.1.31911.260
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nbt", "Nbt\Nbt.csproj", "{4B299816-5614-4598-94B3-CCEFF1036B89}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nbt.Tests", "Nbt.Tests\Nbt.Tests.csproj", "{0835D048-69A5-47F9-93EB-F34824C1817F}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nbt.Tests", "Nbt.Tests\Nbt.Tests.csproj", "{0835D048-69A5-47F9-93EB-F34824C1817F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Examples", "Examples\Examples.csproj", "{3E78BA36-28F6-4B62-AB7A-AE6D79629BCB}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +23,10 @@ Global
 		{0835D048-69A5-47F9-93EB-F34824C1817F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0835D048-69A5-47F9-93EB-F34824C1817F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0835D048-69A5-47F9-93EB-F34824C1817F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3E78BA36-28F6-4B62-AB7A-AE6D79629BCB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3E78BA36-28F6-4B62-AB7A-AE6D79629BCB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3E78BA36-28F6-4B62-AB7A-AE6D79629BCB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3E78BA36-28F6-4B62-AB7A-AE6D79629BCB}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

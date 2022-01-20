@@ -1,144 +1,92 @@
-﻿using System.Collections;
-using System.Text;
+﻿using Obsidian.Nbt.Utilities;
+using System.Collections.Generic;
 
 namespace Obsidian.Nbt;
 
-public class NbtCompound : INbtTag, IEnumerable<KeyValuePair<string, INbtTag>>
+public readonly struct NbtCompound
 {
-    private readonly Dictionary<string, INbtTag> children = new();
+    private readonly NbtDocument parent;
 
-    public int Count => this.children.Count;
+    // Points AFTER compound tag
+    private readonly int index;
 
-    public NbtTagType Type => NbtTagType.Compound;
-
-    public string Name { get; set; }
-
-    public INbtTag Parent { get; set; }
-
-    public INbtTag this[string name] { get => this.children[name]; set => this.Add(name, value); }
-
-    public NbtCompound(string name = "")
+    // Ctor for compounds
+    internal NbtCompound(NbtDocument document, int index)
     {
-        if (this.Parent?.Type == NbtTagType.Compound && string.IsNullOrEmpty(name))
-            throw new InvalidOperationException("Tags within a compound must be named.");
-
-        this.Name = name;
+        parent = document;
+        this.index = index;
     }
 
-    public NbtCompound(List<INbtTag> children) : this()
+    public NbtProperty this[string? propertyName]
     {
-        foreach (var child in children)
-            this.Add(child.Name, child);
+        get => GetProperty(propertyName);
     }
 
-    public NbtCompound(string name, List<INbtTag> children) : this(name)
+    public NbtProperty this[ReadOnlySpan<char> propertyName]
     {
-        foreach (var child in children)
-            this.Add(child.Name, child);
+        get => GetProperty(propertyName);
     }
 
-    public bool Remove(string name) => this.children.Remove(name);
-
-    public bool HasTag(string name) => this.children.ContainsKey(name);
-
-    public bool TryGetTag(string name, out INbtTag tag) => this.children.TryGetValue(name, out tag);
-
-    private T GetTagValue<T>(string name)
+    public NbtProperty this[ReadOnlySpan<byte> propertyName]
     {
-        if (this.TryGetTag(name, out var tag))
+        get => GetProperty(propertyName);
+    }
+
+    public NbtProperty GetProperty(string? propertyName)
+    {
+        return GetProperty(propertyName.AsSpan());
+    }
+
+    public bool TryGetProperty(string? propertyName, out NbtProperty property)
+    {
+        ValidateInstance();
+        return TryGetProperty(propertyName.AsSpan(), out property);
+    }
+
+    public NbtProperty GetProperty(ReadOnlySpan<char> propertyName)
+    {
+        ValidateInstance();
+        if (parent.TryGetProperty(propertyName, index, out NbtProperty property))
         {
-            var actualTag = (NbtTag<T>)tag;
-
-            return actualTag.Value;
+            return property;
         }
 
-        return default;
+        throw new KeyNotFoundException();
     }
 
-    public byte GetByte(string name) => this.GetTagValue<byte>(name);
-
-    public short GetShort(string name) => this.GetTagValue<short>(name);
-
-    public int GetInt(string name) => this.GetTagValue<int>(name);
-
-    public long GetLong(string name) => this.GetTagValue<long>(name);
-
-    public float GetFloat(string name) => this.GetTagValue<float>(name);
-
-    public double GetDouble(string name) => this.GetTagValue<double>(name);
-
-    public string GetString(string name) => this.GetTagValue<string>(name);
-
-    public bool GetBool(string name)
+    public bool TryGetProperty(ReadOnlySpan<char> propertyName, out NbtProperty property)
     {
-        if (!this.TryGetTag(name, out var tag))
-            return false;
-
-        var actualTag = (NbtTag<byte>)tag;
-
-        return actualTag.Value == 1;
+        ValidateInstance();
+        return parent.TryGetProperty(propertyName, index, out property);
     }
 
-    public void Clear() => this.children.Clear();
-
-    public override string ToString()
+    public NbtProperty GetProperty(ReadOnlySpan<byte> propertyName)
     {
-        var sb = new StringBuilder();
-        var count = this.Count;
-
-        sb.AppendLine($"TAG_Compound('{this.Name}'): {count} {(count > 1 ? "entries" : "entry")}")
-            .AppendLine("{");
-
-        foreach (var (_, tag) in this)
-            sb.AppendLine(tag.PrettyString());
-
-        sb.AppendLine("}");
-
-        return sb.ToString();
-    }
-
-    public string PrettyString(int depth = 2, int addBraceDepth = 1)
-    {
-        var sb = new StringBuilder();
-        var count = this.Count;
-
-        var name = $"TAG_Compound('{this.Name}'): {count} {(count > 1 ? "entries" : "entry")}";
-
-        sb.AppendLine(name.PadLeft(name.Length + depth))
-            .AppendLine("{".PadLeft(depth + addBraceDepth));
-
-        foreach (var (_, tag) in this)
+        ValidateInstance();
+        if (parent.TryGetProperty(propertyName, index, out NbtProperty property))
         {
-            var tagString = tag.PrettyString(depth + 1, addBraceDepth + 2);
-            sb.AppendLine(tagString.PadLeft(tagString.Length + depth));
+            return property;
         }
 
-        sb.AppendLine("}".PadLeft(depth + addBraceDepth));
-
-        return sb.ToString();
+        throw new KeyNotFoundException();
     }
 
-    public void Add(string name, INbtTag tag)
+    public bool TryGetProperty(ReadOnlySpan<byte> propertyName, out NbtProperty property)
     {
-        if (string.IsNullOrEmpty(name))
-            throw new InvalidOperationException("Tags inside a compound must be named.");
-
-        tag.Parent = this;
-
-        this.children.Add(name, tag);
+        ValidateInstance();
+        return parent.TryGetProperty(propertyName, index, out property);
     }
 
-    public void Add(INbtTag tag)
+    public NbtDocument.PropertiesEnumerator EnumerateProperties()
     {
-        if (string.IsNullOrEmpty(tag.Name))
-            throw new InvalidOperationException("Tags inside a compound must be named.");
-
-        tag.Parent = this;
-
-        this.children.Add(tag.Name, tag);
+        return new NbtDocument.PropertiesEnumerator(parent, index);
     }
 
-    public IEnumerator<KeyValuePair<string, INbtTag>> GetEnumerator() => this.children.GetEnumerator();
-
-    IEnumerator IEnumerable.GetEnumerator() => this.GetEnumerator();
+    private void ValidateInstance()
+    {
+        if (parent is null)
+        {
+            ThrowHelper.ThrowInvalidOperationException_InvalidInstace();
+        }
+    }
 }
