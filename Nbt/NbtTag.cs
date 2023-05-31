@@ -4,16 +4,16 @@ public class NbtTag<T> : INbtTag
 {
     public NbtTagType Type { get; }
 
-    public string Name { get; set; }
+    public string? Name { get; set; }
 
     /// <summary>
     /// This is either null, a compound or list
     /// </summary>
-    public INbtTag Parent { get; set; }
+    public INbtTag? Parent { get; set; }
 
     public T Value { get; }
 
-    public NbtTag(string name, T value, INbtTag parent = null)
+    public NbtTag(string? name, T value, INbtTag? parent = null)
     {
         this.Name = name;
         this.Parent = parent;
@@ -74,9 +74,9 @@ public interface INbtTag
 {
     public NbtTagType Type { get; }
 
-    public string Name { get; set; }
+    public string? Name { get; set; }
 
-    public INbtTag Parent { get; set; }
+    public INbtTag? Parent { get; set; }
 
     public string PrettyString(int depth = 2, int addBraceDepth = 1);
 }

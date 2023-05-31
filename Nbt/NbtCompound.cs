@@ -1,4 +1,6 @@
-﻿using System.Collections;
+﻿using Obsidian.Nbt.Exceptions;
+using System.Collections;
+using System.Diagnostics.CodeAnalysis;
 using System.Text;
 
 namespace Obsidian.Nbt;
@@ -11,16 +13,16 @@ public class NbtCompound : INbtTag, IEnumerable<KeyValuePair<string, INbtTag>>
 
     public NbtTagType Type => NbtTagType.Compound;
 
-    public string Name { get; set; }
+    public string? Name { get; set; }
 
-    public INbtTag Parent { get; set; }
+    public INbtTag? Parent { get; set; }
 
     public INbtTag this[string name] { get => this.children[name]; set => this.Add(name, value); }
 
-    public NbtCompound(string name = "")
+    public NbtCompound(string? name = "")
     {
         if (this.Parent?.Type == NbtTagType.Compound && string.IsNullOrEmpty(name))
-            throw new InvalidOperationException("Tags within a compound must be named.");
+            throw new NbtException("Tags within a compound must be named.");
 
         this.Name = name;
     }
@@ -28,20 +30,20 @@ public class NbtCompound : INbtTag, IEnumerable<KeyValuePair<string, INbtTag>>
     public NbtCompound(List<INbtTag> children) : this()
     {
         foreach (var child in children)
-            this.Add(child.Name, child);
+            this.Add(child.Name!, child);
     }
 
     public NbtCompound(string name, List<INbtTag> children) : this(name)
     {
         foreach (var child in children)
-            this.Add(child.Name, child);
+            this.Add(child.Name!, child);
     }
 
     public bool Remove(string name) => this.children.Remove(name);
 
     public bool HasTag(string name) => this.children.ContainsKey(name);
 
-    public bool TryGetTag(string name, out INbtTag tag) => this.children.TryGetValue(name, out tag);
+    public bool TryGetTag(string name, [MaybeNullWhen(false)]out INbtTag tag) => this.children.TryGetValue(name, out tag);
 
     private T GetTagValue<T>(string name)
     {
@@ -52,7 +54,7 @@ public class NbtCompound : INbtTag, IEnumerable<KeyValuePair<string, INbtTag>>
             return actualTag.Value;
         }
 
-        return default;
+        return default!;
     }
 
     public byte GetByte(string name) => this.GetTagValue<byte>(name);
@@ -121,7 +123,7 @@ public class NbtCompound : INbtTag, IEnumerable<KeyValuePair<string, INbtTag>>
     public void Add(string name, INbtTag tag)
     {
         if (string.IsNullOrEmpty(name))
-            throw new InvalidOperationException("Tags inside a compound must be named.");
+            throw new NbtException("Tags inside a compound must be named.");
 
         tag.Parent = this;
 
@@ -131,7 +133,7 @@ public class NbtCompound : INbtTag, IEnumerable<KeyValuePair<string, INbtTag>>
     public void Add(INbtTag tag)
     {
         if (string.IsNullOrEmpty(tag.Name))
-            throw new InvalidOperationException("Tags inside a compound must be named.");
+            throw new NbtException("Tags inside a compound must be named.");
 
         tag.Parent = this;
 

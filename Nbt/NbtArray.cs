@@ -14,9 +14,9 @@ public class NbtArray<T> : INbtTag, IEnumerable, ICollection
 
     public NbtTagType Type => this.type;
 
-    public string Name { get; set; }
+    public string? Name { get; set; }
 
-    public INbtTag Parent { get; set; }
+    public INbtTag? Parent { get; set; }
 
     public bool IsSynchronized => this.array.IsSynchronized;
 

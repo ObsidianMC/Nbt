@@ -1,4 +1,5 @@
-﻿using System.Buffers.Binary;
+﻿using Obsidian.Nbt.Exceptions;
+using System.Buffers.Binary;
 using System.IO;
 using System.IO.Compression;
 using System.Text;
@@ -36,14 +37,14 @@ public class NbtReader
         };
     }
 
-    private INbtTag GetCurrentTag(NbtTagType type, bool readName = true)
+    private INbtTag? GetCurrentTag(NbtTagType type, bool readName = true)
     {
         string name = string.Empty;
 
         if (readName)
-            name = this.ReadString();
+            name = this.ReadString() ?? throw new NbtException($"Failed to read tag {type} name.");
 
-        INbtTag tag = type switch
+        INbtTag? tag = type switch
         {
             NbtTagType.Byte => new NbtTag<byte>(name, this.ReadByte()),
             NbtTagType.Short => new NbtTag<short>(name, this.ReadInt16()),
@@ -51,7 +52,7 @@ public class NbtReader
             NbtTagType.Long => new NbtTag<long>(name, this.ReadInt64()),
             NbtTagType.Float => new NbtTag<float>(name, this.ReadSingle()),
             NbtTagType.Double => new NbtTag<double>(name, this.ReadDouble()),
-            NbtTagType.String => new NbtTag<string>(name, this.ReadString()),
+            NbtTagType.String => new NbtTag<string>(name, this.ReadString()!),
             NbtTagType.Compound => this.ReadCompoundTag(name),
             NbtTagType.List => this.ReadListTag(name),
             NbtTagType.ByteArray => this.ReadArray(name, type),
@@ -70,32 +71,32 @@ public class NbtReader
         switch (type)
         {
             case NbtTagType.ByteArray:
-                {
-                    var buffer = new byte[length];
+            {
+                var buffer = new byte[length];
 
-                    this.BaseStream.Read(buffer);
+                this.BaseStream.Read(buffer);
 
-                    return new NbtArray<byte>(name, buffer);
-                }
+                return new NbtArray<byte>(name, buffer);
+            }
             case NbtTagType.IntArray:
-                {
-                    var array = new NbtArray<int>(name, length);
+            {
+                var array = new NbtArray<int>(name, length);
 
-                    for (int i = 0; i < array.Count; i++)
-                    {
-                        array[i] = this.ReadInt32();
-                    }
-                    return array;
+                for (int i = 0; i < array.Count; i++)
+                {
+                    array[i] = this.ReadInt32();
                 }
+                return array;
+            }
             case NbtTagType.LongArray:
-                {
-                    var array = new NbtArray<long>(name, length);
+            {
+                var array = new NbtArray<long>(name, length);
 
-                    for (int i = 0; i < array.Count; i++)
-                        array[i] = this.ReadInt64();
+                for (int i = 0; i < array.Count; i++)
+                    array[i] = this.ReadInt64();
 
-                    return array;
-                }
+                return array;
+            }
             default:
                 throw new InvalidOperationException();
         }
@@ -113,7 +114,11 @@ public class NbtReader
             throw new InvalidOperationException("Got negative list length.");
 
         for (var i = 0; i < length; i++)
-            list.Add(this.GetCurrentTag(listType, false));
+        {
+            var childTag = this.GetCurrentTag(listType, false) ?? throw new NbtException("Failed to read List child tag.");
+
+            list.Add(childTag);
+        }
 
         return list;
     }
@@ -125,7 +130,7 @@ public class NbtReader
         NbtTagType type;
         while ((type = this.ReadTagType()) != NbtTagType.End)
         {
-            var tag = this.GetCurrentTag(type);
+            var tag = this.GetCurrentTag(type) ?? throw new NbtException("Failed to read Compound child tag."); ;
 
             compound.Add(tag);
         }
@@ -133,19 +138,19 @@ public class NbtReader
         return compound;
     }
 
-    public INbtTag ReadNextTag(bool readName = true)
+    public INbtTag? ReadNextTag(bool readName = true)
     {
         var firstType = this.ReadTagType();
+        if (firstType == NbtTagType.End)
+            return null;
 
         string tagName = "";
 
         if (readName)
-            tagName = this.ReadString();
+            tagName = this.ReadString() ?? throw new NbtException($"Failed to read tag {firstType} name.");
 
         switch (firstType)
         {
-            case NbtTagType.End:
-                return null;
             case NbtTagType.Byte:
             case NbtTagType.Short:
             case NbtTagType.Int:
@@ -153,14 +158,14 @@ public class NbtReader
             case NbtTagType.Float:
             case NbtTagType.Double:
             case NbtTagType.String:
-                {
-                    var tag = this.GetCurrentTag(firstType, !readName);
+            {
+                var tag = this.GetCurrentTag(firstType, !readName) ?? throw new NbtException($"Failed to read {firstType} tag.");
 
-                    if (readName)
-                        tag.Name = tagName;
+                if (readName)
+                    tag.Name = tagName;
 
-                    return tag;
-                }
+                return tag;
+            }
             case NbtTagType.List:
                 var listType = this.ReadTagType();
 
@@ -172,7 +177,11 @@ public class NbtReader
                     throw new InvalidOperationException("Got negative list length.");
 
                 for (var i = 0; i < length; i++)
-                    list.Add(this.GetCurrentTag(listType, false));
+                {
+                    var listTag = this.GetCurrentTag(listType, false) ?? throw new NbtException("Failed to read List child tag.");
+
+                    list.Add(listTag);
+                }
 
                 return list;
             case NbtTagType.Compound:
@@ -185,6 +194,7 @@ public class NbtReader
                 return this.ReadArray(tagName, firstType);
             case NbtTagType.Unknown:
                 break;
+            case NbtTagType.End:
             default:
                 break;
         }
@@ -196,7 +206,7 @@ public class NbtReader
 
     public byte ReadByte() => (byte)this.BaseStream.ReadByte();
 
-    public string ReadString()
+    public string? ReadString()
     {
         var length = this.ReadInt16();
 

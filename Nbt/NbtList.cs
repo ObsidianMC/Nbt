@@ -15,8 +15,8 @@ public class NbtList : INbtTag, IList<INbtTag>
 
     public NbtTagType Type => NbtTagType.List;
 
-    public string Name { get; set; }
-    public INbtTag Parent { get; set; }
+    public string? Name { get; set; }
+    public INbtTag? Parent { get; set; }
 
     public NbtList(NbtTagType listType, string name = "")
     {
