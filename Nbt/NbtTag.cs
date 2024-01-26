@@ -1,23 +1,28 @@
 ﻿namespace Obsidian.Nbt;
 
-public class NbtTag<T> : INbtTag
+public sealed class NbtTag<T> : INbtTag
 {
     public NbtTagType Type { get; }
 
-    public string? Name { get; set; }
+    public string Name { get; set; }
 
     /// <summary>
     /// This is either null, a compound or list
     /// </summary>
-    public INbtTag? Parent { get; set; }
+    public INbtTag Parent { get; set; }
 
-    public T Value { get; }
+    public T? Value { get; }
 
-    public NbtTag(string? name, T value, INbtTag? parent = null)
+    public NbtTag(string name, T? value, INbtTag parent = null)
     {
         this.Name = name;
         this.Parent = parent;
         this.Value = value;
+
+        //Some structure files from minecraft have properties with names but null values???
+        if (value is null)
+            return;
+
         this.Type = value switch
         {
             bool => NbtTagType.Byte,
@@ -45,7 +50,7 @@ public class NbtTag<T> : INbtTag
             case NbtTagType.String:
                 return $"TAG_{this.Type}('{this.Name}'): {this.Value}";
             default:
-                throw new NotSupportedException("Only generic types are supported.");
+                return string.Empty;
         }
     }
 
@@ -65,7 +70,7 @@ public class NbtTag<T> : INbtTag
                     return name.PadLeft(name.Length + depth);
                 }
             default:
-                throw new NotSupportedException("Only generic types are supported.");
+                return string.Empty;
         }
     }
 }
@@ -74,9 +79,9 @@ public interface INbtTag
 {
     public NbtTagType Type { get; }
 
-    public string? Name { get; set; }
+    public string Name { get; set; }
 
-    public INbtTag? Parent { get; set; }
+    public INbtTag Parent { get; set; }
 
     public string PrettyString(int depth = 2, int addBraceDepth = 1);
 }
