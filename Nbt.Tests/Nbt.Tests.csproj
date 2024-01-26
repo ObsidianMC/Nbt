@@ -9,10 +9,12 @@
 
   <ItemGroup>
     <None Remove="Assets\bigtest.nbt" />
+    <None Remove="Assets\hello_world.nbt" />
   </ItemGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="Assets\bigtest.nbt" />
+    <EmbeddedResource Include="Assets\hello_world.nbt" />
   </ItemGroup>
 
   <ItemGroup>

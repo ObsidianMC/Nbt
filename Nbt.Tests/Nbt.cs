@@ -9,6 +9,27 @@ public class Nbt(ITestOutputHelper output)
     private readonly ITestOutputHelper output = output;
 
     [Fact]
+    public void HelloWorldTest()
+    {
+        using var fs = Assembly.GetExecutingAssembly().GetManifestResourceStream("Nbt.Tests.Assets.hello_world.nbt")!;
+
+        var reader = new NbtReader(fs, NbtCompression.None);
+
+        var main = (NbtCompound)reader.ReadNextTag()!;
+
+        output.WriteLine(main.ToString());
+
+        Assert.Equal("hello world", main.Name);
+
+        if (!main.TryGetTag("name", out var tag))
+            Assert.Fail("Failed to find name tag.");
+
+        var nameTag = (NbtTag<string>)tag;
+
+        Assert.Equal("Bananrama", nameTag.Value);
+    }
+
+    [Fact]
     public void BigTest()
     {
         using var fs = Assembly.GetExecutingAssembly().GetManifestResourceStream("Nbt.Tests.Assets.bigtest.nbt")!;
@@ -49,11 +70,15 @@ public class Nbt(ITestOutputHelper output)
         var doubleTest = main.GetDouble("doubleTest");
         Assert.Equal(0.49312871321823148, doubleTest);
 
-        //var byteArrayTest = main.GetArr("byteArrayTest (the first 1000 values of (n*n*255+n*7)%100, starting with n=0 (0, 62, 34, 16, 8, ...))");//TODO add getting an array from a compound
-        /*Assert.Equal(1000, byteArrayTest.Value.Length);
+        if (!main.TryGetTag("byteArrayTest (the first 1000 values of (n*n*255+n*7)%100, starting with n=0 (0, 62, 34, 16, 8, ...))",
+            out var array))
+            Assert.Fail("Failed to find byte array tag");
 
-        for (int n = 0; n < 1000; n++)
-            Assert.Equal((n * n * 255 + n * 7) % 100, byteArrayTest.Value[n]);*/
+        var byteArrayTest = (NbtArray<byte>)array;
+        Assert.Equal(1000, byteArrayTest.Count);
+
+        for (int n = 0; n < byteArrayTest.Count; n++)
+            Assert.Equal((n * n * 255 + n * 7) % 100, byteArrayTest[n]);
 
         #region nested compounds
         if (!main.TryGetTag("nested compound test", out INbtTag? compound))
