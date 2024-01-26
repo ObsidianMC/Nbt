@@ -7,23 +7,18 @@ using System.Xml.Linq;
 
 namespace Obsidian.Nbt;
 
-public sealed class NbtReader
+public sealed class NbtReader(Stream input, NbtCompression compressionMode = NbtCompression.None)
 {
     public NbtTagType? CurrentTag { get; set; }
 
-    public Stream BaseStream { get; }
+    public Stream BaseStream { get; } = compressionMode switch
+    {
+        NbtCompression.GZip => new GZipStream(input, CompressionMode.Decompress),
+        NbtCompression.ZLib => new ZLibStream(input, CompressionMode.Decompress),
+        _ => input
+    };
 
     public NbtReader() : this(new MemoryStream()) { }
-
-    public NbtReader(Stream input, NbtCompression compressionMode = NbtCompression.None)
-    {
-        this.BaseStream = compressionMode switch
-        {
-            NbtCompression.GZip => new GZipStream(input, CompressionMode.Decompress),
-            NbtCompression.ZLib => new ZLibStream(input, CompressionMode.Decompress),
-            _ => input
-        };
-    }
 
     public NbtTagType ReadTagType()
     {
