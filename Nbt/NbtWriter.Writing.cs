@@ -9,9 +9,13 @@ public partial class NbtWriter
 
     internal void WriteByteInternal(byte value) => this.BaseStream.WriteByte(value);
 
-    internal void WriteStringInternal(string value)
+    internal void WriteStringInternal(string? value)
     {
-        ArgumentNullException.ThrowIfNull(value);
+        if(value is null)
+        {
+            this.WriteShortInternal(0);
+            return;
+        }
 
         if (value.Length > short.MaxValue)
             throw new InvalidOperationException($"value length must be less than {short.MaxValue}");

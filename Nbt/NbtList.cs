@@ -3,7 +3,7 @@ using System.Text;
 
 namespace Obsidian.Nbt;
 
-public class NbtList : INbtTag, IList<INbtTag>
+public class NbtList(NbtTagType listType, string? name = "") : INbtTag, IList<INbtTag>
 {
     private readonly List<INbtTag> baseList = [];
 
@@ -11,18 +11,12 @@ public class NbtList : INbtTag, IList<INbtTag>
 
     public bool IsReadOnly => false;
 
-    public NbtTagType ListType { get; }
+    public NbtTagType ListType { get; } = listType;
 
     public NbtTagType Type => NbtTagType.List;
 
-    public string Name { get; set; }
-    public INbtTag Parent { get; set; }
-
-    public NbtList(NbtTagType listType, string name = "")
-    {
-        this.Name = name;
-        this.ListType = listType;
-    }
+    public string? Name { get; set; } = name;
+    public INbtTag? Parent { get; set; }
 
     public INbtTag this[int index] { get => this.baseList[index]; set => this.baseList[index] = value; }
 

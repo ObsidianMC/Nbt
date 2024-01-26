@@ -1,4 +1,5 @@
 ﻿using System.Collections;
+using System.Diagnostics.CodeAnalysis;
 using System.Text;
 
 namespace Obsidian.Nbt;
@@ -11,13 +12,13 @@ public class NbtCompound : INbtTag, IEnumerable<KeyValuePair<string, INbtTag>>
 
     public NbtTagType Type => NbtTagType.Compound;
 
-    public string Name { get; set; }
+    public string? Name { get; set; }
 
-    public INbtTag Parent { get; set; }
+    public INbtTag? Parent { get; set; }
 
     public INbtTag this[string name] { get => this.children[name]; set => this.Add(name, value); }
 
-    public NbtCompound(string name = "")
+    public NbtCompound(string? name = "")
     {
         if (this.Parent?.Type == NbtTagType.Compound && string.IsNullOrEmpty(name))
             throw new InvalidOperationException("Tags within a compound must be named.");
@@ -31,7 +32,7 @@ public class NbtCompound : INbtTag, IEnumerable<KeyValuePair<string, INbtTag>>
             this.Add(child.Name, child);
     }
 
-    public NbtCompound(string name, List<INbtTag> children) : this(name)
+    public NbtCompound(string? name, List<INbtTag> children) : this(name)
     {
         foreach (var child in children)
             this.Add(child.Name, child);
@@ -41,9 +42,9 @@ public class NbtCompound : INbtTag, IEnumerable<KeyValuePair<string, INbtTag>>
 
     public bool HasTag(string name) => this.children.ContainsKey(name);
 
-    public bool TryGetTag(string name, out INbtTag tag) => this.children.TryGetValue(name, out tag);
+    public bool TryGetTag(string name, [NotNullWhen(true)] out INbtTag? tag) => this.children.TryGetValue(name, out tag);
 
-    private T GetTagValue<T>(string name)
+    private T? GetTagValue<T>(string name)
     {
         if (this.TryGetTag(name, out var tag))
         {
@@ -67,7 +68,7 @@ public class NbtCompound : INbtTag, IEnumerable<KeyValuePair<string, INbtTag>>
 
     public double GetDouble(string name) => this.GetTagValue<double>(name);
 
-    public string GetString(string name) => this.GetTagValue<string>(name);
+    public string? GetString(string name) => this.GetTagValue<string>(name);
 
     public bool GetBool(string name)
     {
@@ -118,7 +119,7 @@ public class NbtCompound : INbtTag, IEnumerable<KeyValuePair<string, INbtTag>>
         return sb.ToString();
     }
 
-    public void Add(string name, INbtTag tag)
+    public void Add(string? name, INbtTag tag)
     {
         if (string.IsNullOrEmpty(name))
             throw new InvalidOperationException("Tags inside a compound must be named.");

@@ -1,11 +1,13 @@
-﻿using System.Buffers.Binary;
+﻿using Obsidian.Nbt.Exceptions;
+using System.Buffers.Binary;
 using System.IO;
 using System.IO.Compression;
 using System.Text;
+using System.Xml.Linq;
 
 namespace Obsidian.Nbt;
 
-public class NbtReader
+public sealed class NbtReader
 {
     public NbtTagType? CurrentTag { get; set; }
 
@@ -36,14 +38,14 @@ public class NbtReader
         };
     }
 
-    private INbtTag GetCurrentTag(NbtTagType type, bool readName = true)
+    private INbtTag? GetCurrentTag(NbtTagType type, bool readName = true)
     {
-        string name = string.Empty;
+        string? name = string.Empty;
 
         if (readName)
             name = this.ReadString();
 
-        INbtTag tag = type switch
+        INbtTag? tag = type switch
         {
             NbtTagType.Byte => new NbtTag<byte>(name, this.ReadByte()),
             NbtTagType.Short => new NbtTag<short>(name, this.ReadInt16()),
@@ -63,7 +65,7 @@ public class NbtReader
         return tag;
     }
 
-    private INbtTag ReadArray(string name, NbtTagType type)
+    private INbtTag ReadArray(string? name, NbtTagType type)
     {
         var length = this.ReadInt32();
 
@@ -101,7 +103,7 @@ public class NbtReader
         }
     }
 
-    private NbtList ReadListTag(string name)
+    private NbtList ReadListTag(string? name)
     {
         var listType = this.ReadTagType();
 
@@ -113,19 +115,24 @@ public class NbtReader
             throw new InvalidOperationException("Got negative list length.");
 
         for (var i = 0; i < length; i++)
-            list.Add(this.GetCurrentTag(listType, false));
+        {
+            var currentTag = this.GetCurrentTag(listType, false) ?? 
+                throw new NbtException($"Found invalid tag in list. ({name})");
+
+            list.Add(currentTag);
+        }
 
         return list;
     }
 
-    private NbtCompound ReadCompoundTag(string name)
+    private NbtCompound ReadCompoundTag(string? name)
     {
         var compound = new NbtCompound(name);
 
         NbtTagType type;
         while ((type = this.ReadTagType()) != NbtTagType.End)
         {
-            var tag = this.GetCurrentTag(type);
+            var tag = this.GetCurrentTag(type) ?? throw new NbtException($"Found invalid tag in compound. ({name})");
 
             compound.Add(tag);
         }
@@ -133,11 +140,11 @@ public class NbtReader
         return compound;
     }
 
-    public INbtTag ReadNextTag(bool readName = true)
+    public INbtTag? ReadNextTag(bool readName = true)
     {
         var firstType = this.ReadTagType();
 
-        string tagName = "";
+        string? tagName = "";
 
         if (readName)
             tagName = this.ReadString();
@@ -153,8 +160,9 @@ public class NbtReader
             case NbtTagType.Float:
             case NbtTagType.Double:
             case NbtTagType.String:
-            {
-                var tag = this.GetCurrentTag(firstType, !readName);
+                {
+                var tag = this.GetCurrentTag(firstType, !readName) ?? 
+                        throw new NbtException($"Found invalid tag. name: {tagName}");
 
                 if (readName)
                     tag.Name = tagName;
@@ -162,19 +170,7 @@ public class NbtReader
                 return tag;
             }
             case NbtTagType.List:
-                var listType = this.ReadTagType();
-
-                var list = new NbtList(listType, tagName);
-
-                var length = this.ReadInt32();
-
-                if (length < 0)
-                    throw new InvalidOperationException("Got negative list length.");
-
-                for (var i = 0; i < length; i++)
-                    list.Add(this.GetCurrentTag(listType, false));
-
-                return list;
+                return this.ReadListTag(tagName);
             case NbtTagType.Compound:
                 return this.ReadCompoundTag(tagName);
             case NbtTagType.ByteArray:
@@ -196,7 +192,7 @@ public class NbtReader
 
     public byte ReadByte() => (byte)this.BaseStream.ReadByte();
 
-    public string ReadString()
+    public string? ReadString()
     {
         var length = this.ReadInt16();
 

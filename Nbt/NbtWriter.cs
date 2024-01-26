@@ -7,7 +7,7 @@ public sealed partial class NbtWriter : IDisposable, IAsyncDisposable
 {
     private NbtTagType? expectedListType;
 
-    private Stack<Node> rootNodes = new();
+    private readonly Stack<Node> rootNodes = new();
 
     private int listSize;
     private int listIndex;
@@ -74,7 +74,7 @@ public sealed partial class NbtWriter : IDisposable, IAsyncDisposable
         this.rootNodes.Push(node);
     }
 
-    public void WriteCompoundStart(string name = "")
+    public void WriteCompoundStart(string? name = "")
     {
         if (this.rootNodes.Count > 0)
             this.Validate(name, NbtTagType.Compound);
@@ -91,7 +91,7 @@ public sealed partial class NbtWriter : IDisposable, IAsyncDisposable
         this.WriteStringInternal(name);
     }
 
-    public void WriteListStart(string name, NbtTagType listType, int length, bool writeName = true)
+    public void WriteListStart(string? name, NbtTagType listType, int length, bool writeName = true)
     {
         this.Validate(name, NbtTagType.List);
 
@@ -146,9 +146,9 @@ public sealed partial class NbtWriter : IDisposable, IAsyncDisposable
 
         if (newRoot.Type == NbtTagType.List)
         {
-            this.listSize = newRoot.ListSize.Value;
-            this.listIndex = newRoot.ListIndex.Value;
-            this.expectedListType = newRoot.ExpectedListType.Value;
+            this.listSize = newRoot.ListSize!.Value;
+            this.listIndex = newRoot.ListIndex!.Value;
+            this.expectedListType = newRoot.ExpectedListType!.Value;
 
             return true;
         }
@@ -317,13 +317,13 @@ public sealed partial class NbtWriter : IDisposable, IAsyncDisposable
         }
     }
 
-    public void WriteString(string value)
+    public void WriteString(string? value)
     {
         this.Validate(null, NbtTagType.String);
         this.WriteStringInternal(value);
     }
 
-    public void WriteString(string name, string value)
+    public void WriteString(string? name, string? value)
     {
         this.Validate(name, NbtTagType.String);
 
@@ -338,7 +338,7 @@ public sealed partial class NbtWriter : IDisposable, IAsyncDisposable
         this.WriteByteInternal(value);
     }
 
-    public void WriteByte(string name, byte value)
+    public void WriteByte(string? name, byte value)
     {
         this.Validate(name, NbtTagType.Byte);
 
@@ -353,7 +353,7 @@ public sealed partial class NbtWriter : IDisposable, IAsyncDisposable
         this.WriteByteInternal((byte)(value ? 1 : 0));
     }
 
-    public void WriteBool(string name, bool value)
+    public void WriteBool(string? name, bool value)
     {
         this.Validate(name, NbtTagType.Byte);
 
@@ -368,7 +368,7 @@ public sealed partial class NbtWriter : IDisposable, IAsyncDisposable
         this.WriteShortInternal(value);
     }
 
-    public void WriteShort(string name, short value)
+    public void WriteShort(string? name, short value)
     {
         this.Validate(name, NbtTagType.Short);
 
@@ -383,7 +383,7 @@ public sealed partial class NbtWriter : IDisposable, IAsyncDisposable
         this.WriteIntInternal(value);
     }
 
-    public void WriteInt(string name, int value)
+    public void WriteInt(string? name, int value)
     {
         this.Validate(name, NbtTagType.Int);
 
@@ -398,7 +398,7 @@ public sealed partial class NbtWriter : IDisposable, IAsyncDisposable
         this.WriteLongInternal(value);
     }
 
-    public void WriteLong(string name, long value)
+    public void WriteLong(string? name, long value)
     {
         this.Validate(name, NbtTagType.Long);
 
@@ -413,7 +413,7 @@ public sealed partial class NbtWriter : IDisposable, IAsyncDisposable
         this.WriteFloatInternal(value);
     }
 
-    public void WriteFloat(string name, float value)
+    public void WriteFloat(string? name, float value)
     {
         this.Validate(name, NbtTagType.Float);
 
@@ -428,7 +428,7 @@ public sealed partial class NbtWriter : IDisposable, IAsyncDisposable
         this.WriteDoubleInternal(value);
     }
 
-    public void WriteDouble(string name, double value)
+    public void WriteDouble(string? name, double value)
     {
         this.Validate(name, NbtTagType.Double);
 
@@ -438,7 +438,7 @@ public sealed partial class NbtWriter : IDisposable, IAsyncDisposable
         this.WriteDoubleInternal(value);
     }
 
-    public void Validate(string name, NbtTagType type)
+    public void Validate(string? name, NbtTagType type)
     {
         if (this.RootType == NbtTagType.List)
         {
@@ -477,14 +477,14 @@ public sealed partial class NbtWriter : IDisposable, IAsyncDisposable
     public ValueTask DisposeAsync() => this.BaseStream.DisposeAsync();
     public void Dispose() => this.BaseStream.Dispose();
 
-    private class Node
+    private sealed class Node
     {
-        public NbtTagType Type { get; set; }
+        public required NbtTagType Type { get; init; }
 
         public int? ListSize { get; set; }
 
         public int? ListIndex { get; set; }
 
-        public NbtTagType? ExpectedListType { get; set; }
+        public NbtTagType? ExpectedListType { get; init; }
     }
 }
