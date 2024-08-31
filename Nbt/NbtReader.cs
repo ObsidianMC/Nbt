@@ -16,14 +16,14 @@ public ref partial struct NbtReader
         this.stream = stream;
         this.arrayPool = arrayPool ?? FakeArrayPool.Instance;
         buffer = this.arrayPool.Rent(DefaultBufferSize);
-        span = ReadOnlySpan<byte>.Empty;
+        span = [];
     }
 
     public NbtReader(ReadOnlyMemory<byte> memory)
     {
         stream = Stream.Null;
         arrayPool = FakeArrayPool.Instance;
-        buffer = Array.Empty<byte>();
+        buffer = [];
         span = memory.Span;
     }
 
@@ -31,7 +31,7 @@ public ref partial struct NbtReader
     {
         stream = Stream.Null;
         arrayPool = FakeArrayPool.Instance;
-        buffer = Array.Empty<byte>();
+        buffer = [];
         this.span = span;
     }
 
@@ -77,7 +77,7 @@ public ref partial struct NbtReader
         return ref reference;
     }
 
-    public void Dispose()
+    public readonly void Dispose()
     {
         if (buffer != Array.Empty<byte>())
         {

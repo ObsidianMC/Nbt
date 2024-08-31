@@ -7,8 +7,20 @@ public readonly struct NbtCompound
 {
     private readonly NbtDocument parent;
 
-    // Points AFTER compound tag
     private readonly int index;
+
+    public string Name => this.parent.TryGetProperty(this.index, out var property, out _) ? property.Name : string.Empty;
+
+    public int Count()
+    {
+        var result = 0;
+        using var enumerator = this.EnumerateProperties();
+
+        while (enumerator.MoveNext())
+            result++;
+
+        return result;
+    }
 
     // Ctor for compounds
     internal NbtCompound(NbtDocument document, int index)

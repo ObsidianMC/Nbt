@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net6.0</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
 
     <IsPackable>false</IsPackable>
@@ -14,6 +14,14 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
     <DefineConstants>$(DefineConstants)TRACE;XUNIT_SPAN</DefineConstants>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="Assets\bigtest.nbt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\bigtest.nbt" />
+  </ItemGroup>
 
   <ItemGroup>
     <None Include="..\Nbt\.editorconfig" Link=".editorconfig" />

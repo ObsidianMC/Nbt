@@ -71,7 +71,35 @@ public sealed partial class NbtDocument
         int length = RefReader.ReadUShort(ref @ref);
         int valueIndex = index + sizeof(ushort) + length;
         property = new NbtProperty(this, index, valueIndex, tag);
-        endIndex = valueIndex + GetValueLength(ref Unsafe.Add(ref @ref, sizeof(ushort) + length), tag);
+
+        int? valueLength = null;
+        if(tag == NbtTag.Compound)
+        {
+            var compound = property.GetCompound();
+
+            var childLength = 0;
+            foreach (var child in compound.EnumerateProperties())
+            {
+                childLength += child.GetIndex() - index;
+            }
+
+            if(childLength > 0)
+                valueLength = childLength;
+        }
+
+        endIndex = valueIndex + (valueLength ?? GetValueLength(ref Unsafe.Add(ref @ref, sizeof(ushort) + length), tag));
+
+        return true;
+    }
+
+    internal bool TryGetArrayItem(int index, NbtTag listType, out NbtProperty property, out int endIndex)
+    {
+        ref byte @ref = ref GetRef(index);
+
+        int length = RefReader.ReadUShort(ref @ref);
+        property = new NbtProperty(this, -1, index, listType);
+
+        endIndex = GetValueLength(ref Unsafe.Add(ref @ref, sizeof(ushort) + length), listType);
 
         return true;
     }
@@ -109,7 +137,6 @@ public sealed partial class NbtDocument
 
             case NbtTag.String:
                 return sizeof(ushort) + RefReader.ReadUShort(ref @ref);
-
             default:
                 throw new NotImplementedException();
         }
@@ -182,6 +209,16 @@ public sealed partial class NbtDocument
         return new NbtCompound(this, index);
     }
 
+    internal NbtList GetList(int index)
+    {
+        ref byte @ref = ref GetRef(index);
+
+        var tagType = (NbtTag)@ref;
+        int length = RefReader.ReadInt(ref GetRef(index + 1));
+
+        return new(this, index + 2, tagType, length);
+    }
+
     internal string GetString(int index)
     {
         if (stringsCache is not null && stringsCache.TryGetValue(index, out string? cachedString))
@@ -193,7 +230,7 @@ public sealed partial class NbtDocument
         int length = RefReader.ReadUShort(ref @ref);
         @ref = ref Unsafe.Add(ref @ref, sizeof(ushort));
         string @string = RefReader.ReadString(ref @ref, length);
-        stringsCache ??= new();
+        stringsCache ??= [];
         stringsCache.Add(index, @string);
         return @string;
     }
@@ -350,6 +387,47 @@ public sealed partial class NbtDocument
         public bool MoveNext()
         {
             return document.TryGetProperty(index, out property, out index);
+        }
+
+        public void Reset()
+        {
+            index = start;
+        }
+
+        public IEnumerator<NbtProperty> GetEnumerator()
+        {
+            return this;
+        }
+
+        public void Dispose()
+        {
+        }
+    }
+
+    public struct ArrayEnumerator : IEnumerator<NbtProperty>
+    {
+        public NbtProperty Current => property;
+        object IEnumerator.Current => Current;
+
+        private readonly NbtDocument document;
+        private readonly int start;
+        private readonly NbtTag listType;
+        private int index;
+
+        private NbtProperty property;
+
+        internal ArrayEnumerator(NbtDocument document, int start, NbtTag listType)
+        {
+            this.document = document;
+            this.start = start;
+            this.listType = listType;
+            index = start;
+            property = default;
+        }
+
+        public bool MoveNext()
+        {
+            return document.TryGetArrayItem(index, listType, out property, out index);
         }
 
         public void Reset()

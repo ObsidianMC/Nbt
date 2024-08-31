@@ -17,7 +17,7 @@ internal class NbtDocumentExample : IExample
 
         int myNumber = root["my_number"].GetInt();
         string myName = root.GetProperty("my_name").GetString();
-        int[] myArray = root.TryGetProperty("my_array", out NbtProperty property) ? property.GetIntArray() : Array.Empty<int>();
+        int[] myArray = root.TryGetProperty("my_array", out NbtProperty property) ? property.GetIntArray() : [];
 
         foreach (NbtProperty nbtProperty in root.EnumerateProperties())
         {

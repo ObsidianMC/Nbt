@@ -48,6 +48,7 @@ internal class NbtReaderExample : IExample
                         {
                             Console.Write($" {reader.ReadInt()}");
                         }
+
                         Console.WriteLine();
                     }
                     break;

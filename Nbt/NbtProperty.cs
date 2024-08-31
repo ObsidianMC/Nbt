@@ -4,7 +4,7 @@ namespace Obsidian.Nbt;
 
 public readonly struct NbtProperty
 {
-    public string Name => parent.GetString(nameIndex);
+    public string Name => this.nameIndex > -1 ? parent.GetString(nameIndex) : string.Empty;
     public ReadOnlySpan<byte> Utf8Name => parent.GetUtf8StringRaw(nameIndex).Span;
     public NbtTag Tag => tag;
 
@@ -21,6 +21,8 @@ public readonly struct NbtProperty
         this.valueIndex = valueIndex;
         this.tag = tag;
     }
+
+    public int GetIndex() => this.nameIndex;
 
     public byte GetByte()
     {
@@ -139,6 +141,17 @@ public readonly struct NbtProperty
             ThrowHelper.ThrowInvalidOperationException_IncorrectTagType();
         }
         return parent.GetCompound(valueIndex);
+    }
+
+    public NbtList GetList()
+    {
+        ValidateInstance();
+        if (tag != NbtTag.List)
+        {
+            ThrowHelper.ThrowInvalidOperationException_IncorrectTagType();
+        }
+
+        return parent.GetList(valueIndex);
     }
 
     public bool NameEquals(ReadOnlySpan<byte> encodedName)

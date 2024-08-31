@@ -4,7 +4,8 @@ var examples = new IExample[]
 {
     new NbtWriterExample(),
     new NbtReaderExample(),
-    new NbtDocumentExample()
+    new NbtDocumentExample(),
+    new BigTestExample()
 };
 
 for (int i = 0; i < examples.Length; i++)
