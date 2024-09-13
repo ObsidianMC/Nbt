@@ -9,3 +9,4 @@ public interface INbtTag
 
     public string PrettyString(int depth = 2, int addBraceDepth = 1);
 }
+

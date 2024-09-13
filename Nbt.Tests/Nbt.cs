@@ -1,4 +1,5 @@
 ﻿using Obsidian.Nbt;
+using System.IO;
 using System.Reflection;
 using Xunit;
 using Xunit.Abstractions;
@@ -29,14 +30,90 @@ public class Nbt(ITestOutputHelper output)
         Assert.Equal("Bananrama", nameTag.Value);
     }
 
+
     [Fact]
-    public void BigTest()
+    public void ReadBigTest() => this.VerifyBigTest(Assembly.GetExecutingAssembly().GetManifestResourceStream("Nbt.Tests.Assets.bigtest.nbt")!);
+
+    [Fact]
+    public void WriteBigTest()
     {
-        using var fs = Assembly.GetExecutingAssembly().GetManifestResourceStream("Nbt.Tests.Assets.bigtest.nbt")!;
+        var stream = new MemoryStream();
+        using var writer = new NbtWriter(stream, NbtCompression.GZip, "Level");
+        {
+            writer.WriteCompoundStart("nested compound test");
+            {
+                writer.WriteCompoundStart("egg");
+                {
+                    writer.WriteString("name", "Eggbert");
+                    writer.WriteFloat("value", 0.5f);
+                }
+                writer.EndCompound();
 
-        var reader = new NbtReader(fs, NbtCompression.GZip);
+                writer.WriteCompoundStart("ham");
+                {
+                    writer.WriteString("name", "Hampus");
+                    writer.WriteFloat("value", 0.75f);
+                }
+                writer.EndCompound();
+            }
+            writer.EndCompound();
 
-        var main = (NbtCompound)reader.ReadNextTag()!;
+            writer.WriteInt("intTest", int.MaxValue);
+            writer.WriteByte("byteTest", (byte)sbyte.MaxValue);
+            writer.WriteString("stringTest", "HELLO WORLD THIS IS A TEST STRING \xc5\xc4\xd6!");
+
+            writer.WriteListStart("listTest (long)", NbtTagType.Long, 5);
+            {
+                for (int i = 0; i < 5; i++)
+                    writer.WriteLong(11 + i);
+            }
+            writer.EndList();
+
+            writer.WriteDouble("doubleTest", 0.49312871321823148);
+            writer.WriteFloat("floatTest", 0.49823147058486938f);
+            writer.WriteLong("longTest", long.MaxValue);
+            writer.WriteShort("shortTest", short.MaxValue);
+
+            writer.WriteListStart("listTest (compound)", NbtTagType.Compound, 2);
+            {
+                writer.WriteCompoundStart();
+                {
+                    writer.WriteLong("created-on", 1264099775885L);
+                    writer.WriteString("name", "Compound tag #0");
+                }
+                writer.EndCompound();
+
+                writer.WriteCompoundStart();
+                {
+                    writer.WriteLong("created-on", 1264099775885L);
+                    writer.WriteString("name", "Compound tag #1");
+                }
+                writer.EndCompound();
+            }
+            writer.EndList();
+
+            Assert.Equal(NbtTagType.Compound, writer.RootType);
+
+            var array = new byte[1000];
+            for (int n = 0; n < 1000; n++)
+                array[n] = (byte)((n * n * 255 + n * 7) % 100);
+
+            writer.WriteArray("byteArrayTest (the first 1000 values of (n*n*255+n*7)%100, starting with n=0 (0, 62, 34, 16, 8, ...))", array);
+        }
+        writer.EndCompound();
+
+        writer.TryFinish();
+
+        stream.Position = 0;
+
+        this.VerifyBigTest(stream);
+    }
+
+    private void VerifyBigTest(Stream stream)
+    {
+        var reader = new NbtReader(stream, NbtCompression.GZip);
+
+        Assert.True(reader.TryReadNextTag<NbtCompound>(out var main));
 
         //Writing out the string to read ourselves
         output.WriteLine(main.ToString());
@@ -70,38 +147,25 @@ public class Nbt(ITestOutputHelper output)
         var doubleTest = main.GetDouble("doubleTest");
         Assert.Equal(0.49312871321823148, doubleTest);
 
-        if (!main.TryGetTag("byteArrayTest (the first 1000 values of (n*n*255+n*7)%100, starting with n=0 (0, 62, 34, 16, 8, ...))",
-            out var array))
-            Assert.Fail("Failed to find byte array tag");
-
-        var byteArrayTest = (NbtArray<byte>)array;
+        Assert.True(main.TryGetTag<NbtArray<byte>>("byteArrayTest (the first 1000 values of (n*n*255+n*7)%100, starting with n=0 (0, 62, 34, 16, 8, ...))", out var byteArrayTest));
         Assert.Equal(1000, byteArrayTest.Count);
 
-        for (int n = 0; n < byteArrayTest.Count; n++)
+        for (int n = 0; n < 1000; n++)
             Assert.Equal((n * n * 255 + n * 7) % 100, byteArrayTest[n]);
 
         #region nested compounds
-        if (!main.TryGetTag("nested compound test", out INbtTag? compound))
-            Assert.Fail("Failed to find nested compound test tag");
-
-        var nestedCompound = (NbtCompound)compound;
+        Assert.True(main.TryGetTag<NbtCompound>("nested compound test", out var nestedCompound));
 
         Assert.Equal(2, nestedCompound.Count);
 
-        if(!nestedCompound.TryGetTag("ham", out INbtTag? hamCompound))
-            Assert.Fail("Failed to find ham tag");
-
-        var ham = (NbtCompound)hamCompound;
+        Assert.True(nestedCompound.TryGetTag<NbtCompound>("ham", out var ham));
 
         Assert.Equal(2, ham.Count);
 
         Assert.Equal("Hampus", ham.GetString("name"));
         Assert.Equal(0.75, ham.GetFloat("value"));
 
-        if(!nestedCompound.TryGetTag("egg", out INbtTag? eggCompound))
-            Assert.Fail("Failed to find egg tag");
-
-        var egg = (NbtCompound)eggCompound;
+        Assert.True(nestedCompound.TryGetTag<NbtCompound>("egg", out var egg));
 
         Assert.Equal(2, egg.Count);
         Assert.Equal("Eggbert", egg.GetString("name"));
@@ -109,10 +173,7 @@ public class Nbt(ITestOutputHelper output)
         #endregion nested compounds
 
         #region lists
-        if(!main.TryGetTag("listTest (long)", out var longList))
-            Assert.Fail("Failed to find listtest (long) tag");
-
-        var listLongTest = (NbtList)longList;
+        Assert.True(main.TryGetTag<NbtList>("listTest (long)", out var listLongTest));
 
         Assert.Equal(5, listLongTest.Count);
 
@@ -124,10 +185,7 @@ public class Nbt(ITestOutputHelper output)
                 Assert.Equal(count++, item.Value);
         }
 
-        if (!main.TryGetTag("listTest (compound)", out var compoundList))
-            Assert.Fail("Failed to find listtest (compound) tag.");
-
-        var listCompoundTest = (NbtList)compoundList;
+        Assert.True(main.TryGetTag<NbtList>("listTest (compound)", out var listCompoundTest));
 
         Assert.Equal(2, listCompoundTest.Count);
 

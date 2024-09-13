@@ -13,7 +13,7 @@ public sealed class NbtTag<T> : INbtTag
 
     public T? Value { get; }
 
-    public NbtTag(string? name, T? value, INbtTag? parent = null)
+    public NbtTag(string name, T? value, INbtTag parent = null)
     {
         this.Name = name;
         this.Parent = parent;
