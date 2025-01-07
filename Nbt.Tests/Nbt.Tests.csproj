@@ -31,7 +31,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Nbt\Nbt.csproj" />
+    <ProjectReference Include="..\Nbt\Obsidian.Nbt.csproj" />
   </ItemGroup>
 
 </Project>

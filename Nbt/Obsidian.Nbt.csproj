@@ -1,0 +1,49 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+		<Nullable>annotations</Nullable>
+		
+		<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+		<Version>1.0.0</Version>
+		<AssemblyVersion>1.0.0.0</AssemblyVersion>
+	</PropertyGroup>
+
+	<PropertyGroup>
+		<Authors>Obsidian Team</Authors>
+		<Company>Obsidian Team</Company>
+		<Product>Obsidian</Product>
+
+		<PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
+
+		<AssemblyName>Obsidian.Nbt</AssemblyName>
+		<RootNamespace>Obsidian.Nbt</RootNamespace>
+
+		<RepositoryUrl>https://www.github.com/ObsidianMC/Nbt</RepositoryUrl>
+		<PackageProjectUrl>https://www.github.com/ObsidianMC/Nbt</PackageProjectUrl>
+
+		<Title>Obsidian Nbt Library</Title>
+		<Description>Library for writing and reading NBT data. Used by the Obsidian project.</Description>
+		
+		<PackageIconUrl>https://i.imgur.com/jU1lkP4.png</PackageIconUrl>
+		<PackageIcon>icon.png</PackageIcon>
+		<PackageLicenseFile>..\LICENSE</PackageLicenseFile>
+		<PackageReadmeFile>..\README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include=".\icon.png">
+			<Pack>True</Pack>
+			<PackagePath>\</PackagePath>
+		</None>
+		<None Include="..\LICENSE">
+			<Pack>True</Pack>
+			<PackagePath></PackagePath>
+		</None>
+		<None Include="..\README.md">
+			<Pack>True</Pack>
+			<PackagePath>\</PackagePath>
+		</None>
+	</ItemGroup>
+
+</Project>
