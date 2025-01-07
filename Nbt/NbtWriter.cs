@@ -75,7 +75,7 @@ public partial struct NbtWriter(Stream outstream, NbtCompression compressionMode
         this.RootType = type;
     }
 
-    public void WriteCompoundStart(string name = "")
+    public void WriteCompoundStart(string? name = null)
     {
         this.Validate(name, NbtTagType.Compound);
 
@@ -219,7 +219,7 @@ public partial struct NbtWriter(Stream outstream, NbtCompression compressionMode
                 }
                 else if (tag is NbtTag<bool> boolValue)
                 {
-                    this.WriteByte((byte)(boolValue.Value ? 1 : 0));
+                    this.WriteBool(boolValue.Value);
                 }
                 break;
             case NbtTagType.Short:
@@ -269,7 +269,7 @@ public partial struct NbtWriter(Stream outstream, NbtCompression compressionMode
         }
     }
 
-    public void WriteArray(string? name, ReadOnlySpan<int> values)
+    public readonly void WriteArray(string? name, ReadOnlySpan<int> values)
     {
         this.Write(NbtTagType.IntArray);
         this.WriteStringInternal(name);
@@ -279,7 +279,7 @@ public partial struct NbtWriter(Stream outstream, NbtCompression compressionMode
             this.WriteIntInternal(values[i]);
     }
 
-    public void WriteArray(string? name, ReadOnlySpan<long> values)
+    public readonly void WriteArray(string? name, ReadOnlySpan<long> values)
     {
         this.Write(NbtTagType.LongArray);
         this.WriteStringInternal(name);
@@ -289,7 +289,7 @@ public partial struct NbtWriter(Stream outstream, NbtCompression compressionMode
             this.WriteLongInternal(values[i]);
     }
 
-    public void WriteArray(string? name, ReadOnlySpan<byte> values)
+    public readonly void WriteArray(string? name, ReadOnlySpan<byte> values)
     {
         this.Write(NbtTagType.ByteArray);
         this.WriteStringInternal(name);
@@ -298,7 +298,7 @@ public partial struct NbtWriter(Stream outstream, NbtCompression compressionMode
         this.BaseStream.Write(values);
     }
 
-    public void Validate(string name, NbtTagType type)
+    public readonly void Validate(string? name, NbtTagType type)
     {
         if (this.TryValidateList(name, type))
             return;
@@ -312,7 +312,7 @@ public partial struct NbtWriter(Stream outstream, NbtCompression compressionMode
         this.currentState.ChildrenAdded.Add(name);
     }
 
-    private bool TryValidateList(string name, NbtTagType type)
+    private readonly bool TryValidateList(string? name, NbtTagType type)
     {
         if (this.RootType != NbtTagType.List)
             return false;
@@ -332,7 +332,7 @@ public partial struct NbtWriter(Stream outstream, NbtCompression compressionMode
         return true;
     }
 
-    public void TryFinish()
+    public readonly void TryFinish()
     {
         if (this.currentState != null)
             throw new InvalidOperationException($"Unable to close writer. Root tag has yet to be closed.");//TODO maybe more info here??
@@ -340,7 +340,7 @@ public partial struct NbtWriter(Stream outstream, NbtCompression compressionMode
         this.BaseStream.Flush();
     }
 
-    public async Task TryFinishAsync()
+    public readonly async Task TryFinishAsync()
     {
         if (this.currentState != null)
             throw new InvalidOperationException("Unable to close writer. Root tag has yet to be closed.");//TODO maybe more info here??
@@ -348,10 +348,10 @@ public partial struct NbtWriter(Stream outstream, NbtCompression compressionMode
         await this.BaseStream.FlushAsync();
     }
 
-    public ValueTask DisposeAsync() => this.BaseStream.DisposeAsync();
-    public void Dispose() => this.BaseStream.Dispose();
+    public readonly ValueTask DisposeAsync() => this.BaseStream.DisposeAsync();
+    public readonly void Dispose() => this.BaseStream.Dispose();
 
-    private void WriteArray(INbtTag array)
+    private readonly void WriteArray(INbtTag array)
     {
         this.Validate(array.Name, array.Type);
 

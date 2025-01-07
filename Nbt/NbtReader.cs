@@ -14,12 +14,12 @@ public readonly partial struct NbtReader(Stream input, NbtCompression compressio
         _ => input
     };
 
-   
+
     public INbtTag? ReadNextTag(bool readName = true)
     {
         var firstType = this.ReadTagType();
 
-        string tagName = readName ? this.ReadString() : string.Empty;
+        var tagName = readName ? this.ReadString() : null;
 
         return firstType switch
         {
@@ -33,7 +33,7 @@ public readonly partial struct NbtReader(Stream input, NbtCompression compressio
         };
     }
 
-    public bool TryReadNextTag(bool readName, [MaybeNullWhen(false)] out INbtTag tag)
+    public bool TryReadNextTag(bool readName, [MaybeNullWhen(false)] out INbtTag? tag)
     {
         var nextTag = this.ReadNextTag(readName);
 
@@ -47,7 +47,7 @@ public readonly partial struct NbtReader(Stream input, NbtCompression compressio
         return false;
     }
 
-    public bool TryReadNextTag<T>(bool readName, [MaybeNullWhen(false)] out T tag) where T : INbtTag
+    public bool TryReadNextTag<T>(bool readName, [MaybeNullWhen(false)] out T? tag) where T : INbtTag
     {
         if (this.TryReadNextTag(readName, out INbtTag newTag) && newTag is T matchedTag)
         {
@@ -59,7 +59,7 @@ public readonly partial struct NbtReader(Stream input, NbtCompression compressio
         return false;
     }
 
-    public bool TryReadNextTag([MaybeNullWhen(false)] out INbtTag tag)
+    public bool TryReadNextTag([MaybeNullWhen(false)] out INbtTag? tag)
     {
         var nextTag = this.ReadNextTag();
 
@@ -73,7 +73,7 @@ public readonly partial struct NbtReader(Stream input, NbtCompression compressio
         return false;
     }
 
-    public bool TryReadNextTag<T>([MaybeNullWhen(false)] out T tag) where T : INbtTag
+    public bool TryReadNextTag<T>([MaybeNullWhen(false)] out T? tag) where T : INbtTag
     {
         if (this.TryReadNextTag(out INbtTag? newTag) && newTag is T matchedTag)
         {
@@ -87,7 +87,7 @@ public readonly partial struct NbtReader(Stream input, NbtCompression compressio
 
     private INbtTag? GetCurrentTag(NbtTagType type, bool readName = true)
     {
-        string name = readName ? this.ReadString() : string.Empty;
+        var name = readName ? this.ReadString() : null;
 
         INbtTag? tag = type switch
         {
@@ -109,7 +109,7 @@ public readonly partial struct NbtReader(Stream input, NbtCompression compressio
         return tag;
     }
 
-    private INbtTag? GetCurrentTag(NbtTagType type, string name, bool readName = true)
+    private INbtTag? GetCurrentTag(NbtTagType type, string? name, bool readName = true)
     {
         name = readName ? this.ReadString() : name;
 
@@ -133,7 +133,7 @@ public readonly partial struct NbtReader(Stream input, NbtCompression compressio
         return tag;
     }
 
-    private INbtTag ReadArray<T>(string name, Func<T> readElement) where T : struct
+    private NbtArray<T> ReadArray<T>(string name, Func<T> readElement) where T : struct
     {
         int length = ReadInt32();
         if (length < 0)
@@ -148,7 +148,7 @@ public readonly partial struct NbtReader(Stream input, NbtCompression compressio
         return new NbtArray<T>(name, array);
     }
 
-    private NbtList ReadListTag(string name)
+    private NbtList ReadListTag(string? name)
     {
         var listType = this.ReadTagType();
 
@@ -164,7 +164,7 @@ public readonly partial struct NbtReader(Stream input, NbtCompression compressio
         return list;
     }
 
-    private NbtCompound ReadCompoundTag(string name)
+    private NbtCompound ReadCompoundTag(string? name)
     {
         var compound = new NbtCompound(name);
 

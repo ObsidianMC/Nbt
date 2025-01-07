@@ -25,7 +25,7 @@ public sealed class NbtArray<T> : INbtTag, IEnumerable, ICollection where T : st
     {
         (this.Name, this.array) = (name, array);
 
-        this.Type = this.DetermingType();
+        this.Type = this.DetermineType();
     }
 
     public void CopyTo(Array array, int index) => this.array.CopyTo(array, index);
@@ -44,7 +44,7 @@ public sealed class NbtArray<T> : INbtTag, IEnumerable, ICollection where T : st
         return name.PadLeft(name.Length + depth);
     }
 
-    private NbtTagType DetermingType() => typeof(T) switch
+    private NbtTagType DetermineType() => typeof(T) switch
     {
         Type t when t == typeof(int) => NbtTagType.IntArray,
         Type t when t == typeof(long) => NbtTagType.LongArray,

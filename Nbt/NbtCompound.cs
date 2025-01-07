@@ -19,7 +19,7 @@ public sealed class NbtCompound : INbtTag, IEnumerable<KeyValuePair<string, INbt
 
     public INbtTag this[string name] { get => this.children[name]; set => this.Add(name, value); }
 
-    public NbtCompound(string name = "")
+    public NbtCompound(string? name = null)
     {
         if (this.Parent?.Type == NbtTagType.Compound && string.IsNullOrEmpty(name))
             throw new ArgumentNullException(nameof(name), "Tags within a compound must be named.");
@@ -33,7 +33,7 @@ public sealed class NbtCompound : INbtTag, IEnumerable<KeyValuePair<string, INbt
             this.Add(child.Name, child);
     }
 
-    public NbtCompound(string name, List<INbtTag> children) : this(name)
+    public NbtCompound(string? name, List<INbtTag> children) : this(name)
     {
         foreach (var child in children)
             this.Add(child.Name, child);
@@ -43,8 +43,8 @@ public sealed class NbtCompound : INbtTag, IEnumerable<KeyValuePair<string, INbt
 
     public bool HasTag(string name) => this.children.ContainsKey(name);
 
-    public bool TryGetTag(string name, [MaybeNullWhen(false)] out INbtTag tag) => this.children.TryGetValue(name, out tag);
-    public bool TryGetTag<T>(string name, [MaybeNullWhen(false)] out T tag) where T : INbtTag
+    public bool TryGetTag(string name, [MaybeNullWhen(false)] out INbtTag? tag) => this.children.TryGetValue(name, out tag);
+    public bool TryGetTag<T>(string name, [MaybeNullWhen(false)] out T? tag) where T : INbtTag
     {
         if (this.children.TryGetValue(name, out var childTag) && childTag is T matchedTag)
         {
@@ -55,9 +55,9 @@ public sealed class NbtCompound : INbtTag, IEnumerable<KeyValuePair<string, INbt
         tag = default;
         return false;
     }
-    public bool TryGetTagValue<TValue>(string name, [MaybeNullWhen(false)]out TValue value)
+    public bool TryGetTagValue<TValue>(string name, [MaybeNullWhen(false)] out TValue? value)
     {
-        if(this.GetTagValue<TValue>(name) is TValue tagValue)
+        if (this.GetTagValue<TValue>(name) is TValue tagValue)
         {
             value = tagValue;
             return true;

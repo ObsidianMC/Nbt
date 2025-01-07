@@ -1,5 +1,5 @@
 ﻿namespace Obsidian.Nbt.Exceptions;
-public sealed class TagNotFoundException : NbtException
+public sealed class TagNotFoundException : Exception
 {
     public TagNotFoundException(string? message) : base(message)
     {
@@ -7,4 +7,3 @@ public sealed class TagNotFoundException : NbtException
 
     public TagNotFoundException(string? message, Exception? innerException) : base(message, innerException) { }
 }
-
