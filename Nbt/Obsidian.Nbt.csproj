@@ -27,8 +27,8 @@
 		
 		<PackageIconUrl>https://i.imgur.com/jU1lkP4.png</PackageIconUrl>
 		<PackageIcon>icon.png</PackageIcon>
-		<PackageLicenseFile>..\LICENSE</PackageLicenseFile>
-		<PackageReadmeFile>..\README.md</PackageReadmeFile>
+		<PackageLicenseFile>LICENSE</PackageLicenseFile>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
 	</PropertyGroup>
 
 	<ItemGroup>
