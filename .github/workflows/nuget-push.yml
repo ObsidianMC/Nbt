@@ -24,9 +24,7 @@ jobs:
         uses: actions/setup-dotnet@v3
         with:
           dotnet-version: |
-            9
-            8
-            7
+            10
       - name: Pack n Push
         run: |
           dotnet build -c Release -p:Version=1.0.0-${{ github.run_number }}-${{ github.sha }}
