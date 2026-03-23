@@ -1,4 +1,6 @@
-﻿namespace Obsidian.Nbt;
+﻿using System.Diagnostics;
+
+namespace Obsidian.Nbt;
 
 public enum NbtCompression : byte
 {
@@ -8,6 +10,7 @@ public enum NbtCompression : byte
 
     ZLib,
 
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
     Zstd,
 
     Brotli

@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="Nbt.Benchmarks/Obsidian.Nbt.Benchmarks.csproj" />
+  <Project Path="Nbt.Tests/Nbt.Tests.csproj" />
+  <Project Path="Nbt/Obsidian.Nbt.csproj" />
+</Solution>

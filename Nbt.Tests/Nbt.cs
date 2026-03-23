@@ -2,7 +2,6 @@
 using System.IO;
 using System.Reflection;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace Nbt.Tests;
 public class Nbt(ITestOutputHelper output)
@@ -38,7 +37,7 @@ public class Nbt(ITestOutputHelper output)
     public void WriteBigTest()
     {
         var stream = new MemoryStream();
-        using var writer = new NbtWriter(stream, NbtCompression.GZip, "Level");
+        using var writer = new NbtWriterStream(stream, NbtCompression.GZip, "Level");
         {
             writer.WriteCompoundStart("nested compound test");
             {
@@ -107,6 +106,44 @@ public class Nbt(ITestOutputHelper output)
         stream.Position = 0;
 
         this.VerifyBigTest(stream);
+    }
+
+    [Fact]
+    public void WriteNetworkCompoundOmitsRootName()
+    {
+        var stream = new MemoryStream();
+        var writer = new NbtWriterStream(stream, true);
+
+        writer.WriteString("name", "Bananrama");
+        writer.EndCompound();
+        writer.TryFinish();
+
+        stream.Position = 0;
+
+        var reader = new NbtReader(stream);
+
+        Assert.True(reader.TryReadNextTag(false, out NbtCompound main));
+        Assert.Equal(string.Empty, main.Name);
+        Assert.Equal("Bananrama", main.GetString("name"));
+    }
+
+    [Fact]
+    public void WriteNonNetworkCompoundIncludesRootName()
+    {
+        var stream = new MemoryStream();
+        var writer = new NbtWriterStream(stream, false);
+
+        writer.WriteString("name", "Bananrama");
+        writer.EndCompound();
+        writer.TryFinish();
+
+        stream.Position = 0;
+
+        var reader = new NbtReader(stream);
+
+        Assert.True(reader.TryReadNextTag(out NbtCompound main));
+        Assert.Equal(string.Empty, main.Name);
+        Assert.Equal("Bananrama", main.GetString("name"));
     }
 
     private void VerifyBigTest(Stream stream)

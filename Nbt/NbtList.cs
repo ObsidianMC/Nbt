@@ -3,7 +3,7 @@ using System.Text;
 
 namespace Obsidian.Nbt;
 
-public sealed class NbtList(NbtTagType listType, string? name = null) : INbtTag, IList<INbtTag>
+public sealed class NbtList(NbtTagType listType, string name = "") : INbtTag, IList<INbtTag>
 {
     private readonly List<INbtTag> baseList = [];
 

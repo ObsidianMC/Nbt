@@ -1,9 +1,9 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
-		<TargetFramework>net9.0</TargetFramework>
+		<TargetFramework>net10.0</TargetFramework>
 		<Nullable>annotations</Nullable>
-		
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 		<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
 		<Version>1.0.0</Version>
 		<AssemblyVersion>1.0.0.0</AssemblyVersion>
@@ -24,7 +24,9 @@
 
 		<Title>Obsidian Nbt Library</Title>
 		<Description>Library for writing and reading NBT data. Used by the Obsidian project.</Description>
-		
+		<PackageTags>minecraft obsidian nbt</PackageTags>
+
+
 		<PackageIconUrl>https://i.imgur.com/jU1lkP4.png</PackageIconUrl>
 		<PackageIcon>icon.png</PackageIcon>
 		<PackageLicenseFile>LICENSE</PackageLicenseFile>

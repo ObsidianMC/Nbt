@@ -13,7 +13,7 @@ public sealed class NbtTag<T> : INbtTag
 
     public T? Value { get; }
 
-    public NbtTag(string? name, T? value, INbtTag parent = null)
+    public NbtTag(string name, T? value, INbtTag parent = null)
     {
         this.Name = name;
         this.Parent = parent;
@@ -25,7 +25,8 @@ public sealed class NbtTag<T> : INbtTag
 
         this.Type = value switch
         {
-            bool or byte => NbtTagType.Byte,
+            bool => NbtTagType.Byte,
+            byte => NbtTagType.Byte,
             short => NbtTagType.Short,
             int => NbtTagType.Int,
             long => NbtTagType.Long,

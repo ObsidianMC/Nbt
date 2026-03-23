@@ -1,11 +1,13 @@
-﻿using System.IO;
+﻿using Obsidian.Nbt.Interfaces;
+using Obsidian.Nbt.Utilities;
+using System.IO;
 using System.IO.Compression;
 
 namespace Obsidian.Nbt;
 
-public partial struct NbtWriter(Stream outstream, NbtCompression compressionMode = NbtCompression.None) : IDisposable, IAsyncDisposable
+public partial struct NbtWriterStream(Stream outstream, NbtCompression compressionMode = NbtCompression.None) : INbtWriter
 {
-    private State? currentState;
+    private NbtWriterState? currentState;
     public NbtTagType? RootType { get; private set; }
 
     public Stream BaseStream { get; } = compressionMode switch
@@ -17,7 +19,7 @@ public partial struct NbtWriter(Stream outstream, NbtCompression compressionMode
 
     public bool Networked { get; }
 
-    public NbtWriter(Stream outstream, string name) : this(outstream)
+    public NbtWriterStream(Stream outstream, string name) : this(outstream)
     {
         this.Write(NbtTagType.Compound);
         this.WriteStringInternal(name);
@@ -25,16 +27,19 @@ public partial struct NbtWriter(Stream outstream, NbtCompression compressionMode
         this.SetRootTag(NbtTagType.Compound);
     }
 
-    public NbtWriter(Stream outstream, bool networked) : this(outstream)
+    public NbtWriterStream(Stream outstream, bool networked) : this(outstream)
     {
         this.Networked = networked;
 
         this.Write(NbtTagType.Compound);
 
+        if (!networked)
+            this.WriteStringInternal(string.Empty);
+
         this.SetRootTag(NbtTagType.Compound);
     }
 
-    public NbtWriter(Stream outstream, NbtCompression compressionMode, string name) : this(outstream, compressionMode)
+    public NbtWriterStream(Stream outstream, NbtCompression compressionMode, string name) : this(outstream, compressionMode)
     {
         this.Write(NbtTagType.Compound);
         this.WriteStringInternal(name);
@@ -50,6 +55,7 @@ public partial struct NbtWriter(Stream outstream, NbtCompression compressionMode
             {
                 PreviousState = this.currentState,
                 ExpectedListType = null,
+                ActiveListType = this.RootType == NbtTagType.List ? this.currentState?.ExpectedListType ?? this.currentState?.ActiveListType : this.currentState?.ActiveListType,
                 ParentTagType = this.RootType ?? type,
                 ChildrenAdded = []
             };
@@ -65,6 +71,7 @@ public partial struct NbtWriter(Stream outstream, NbtCompression compressionMode
             this.currentState = new()
             {
                 ExpectedListType = listType,
+                ActiveListType = listType,
                 ListSize = listSize,
                 ListIndex = 0,
                 PreviousState = this.currentState,
@@ -75,7 +82,7 @@ public partial struct NbtWriter(Stream outstream, NbtCompression compressionMode
         this.RootType = type;
     }
 
-    public void WriteCompoundStart(string? name = null)
+    public void WriteCompoundStart(string name = "")
     {
         this.Validate(name, NbtTagType.Compound);
 
@@ -219,7 +226,7 @@ public partial struct NbtWriter(Stream outstream, NbtCompression compressionMode
                 }
                 else if (tag is NbtTag<bool> boolValue)
                 {
-                    this.WriteBool(boolValue.Value);
+                    this.WriteByte((byte)(boolValue.Value ? 1 : 0));
                 }
                 break;
             case NbtTagType.Short:
@@ -269,7 +276,7 @@ public partial struct NbtWriter(Stream outstream, NbtCompression compressionMode
         }
     }
 
-    public readonly void WriteArray(string? name, ReadOnlySpan<int> values)
+    public void WriteArray(string? name, ReadOnlySpan<int> values)
     {
         this.Write(NbtTagType.IntArray);
         this.WriteStringInternal(name);
@@ -279,7 +286,7 @@ public partial struct NbtWriter(Stream outstream, NbtCompression compressionMode
             this.WriteIntInternal(values[i]);
     }
 
-    public readonly void WriteArray(string? name, ReadOnlySpan<long> values)
+    public void WriteArray(string? name, ReadOnlySpan<long> values)
     {
         this.Write(NbtTagType.LongArray);
         this.WriteStringInternal(name);
@@ -289,7 +296,7 @@ public partial struct NbtWriter(Stream outstream, NbtCompression compressionMode
             this.WriteLongInternal(values[i]);
     }
 
-    public readonly void WriteArray(string? name, ReadOnlySpan<byte> values)
+    public void WriteArray(string? name, ReadOnlySpan<byte> values)
     {
         this.Write(NbtTagType.ByteArray);
         this.WriteStringInternal(name);
@@ -298,7 +305,7 @@ public partial struct NbtWriter(Stream outstream, NbtCompression compressionMode
         this.BaseStream.Write(values);
     }
 
-    public readonly void Validate(string? name, NbtTagType type)
+    private void Validate(string name, NbtTagType type)
     {
         if (this.TryValidateList(name, type))
             return;
@@ -312,7 +319,7 @@ public partial struct NbtWriter(Stream outstream, NbtCompression compressionMode
         this.currentState.ChildrenAdded.Add(name);
     }
 
-    private readonly bool TryValidateList(string? name, NbtTagType type)
+    private bool TryValidateList(string name, NbtTagType type)
     {
         if (this.RootType != NbtTagType.List)
             return false;
@@ -351,7 +358,7 @@ public partial struct NbtWriter(Stream outstream, NbtCompression compressionMode
     public readonly ValueTask DisposeAsync() => this.BaseStream.DisposeAsync();
     public readonly void Dispose() => this.BaseStream.Dispose();
 
-    private readonly void WriteArray(INbtTag array)
+    private void WriteArray(INbtTag array)
     {
         this.Validate(array.Name, array.Type);
 
@@ -366,29 +373,6 @@ public partial struct NbtWriter(Stream outstream, NbtCompression compressionMode
         else if (array is NbtArray<byte> byteArray)
         {
             this.WriteArray(byteArray.Name, byteArray.GetArray());
-        }
-    }
-
-    private sealed class State
-    {
-        public int ListSize { get; init; }
-
-        public int ListIndex { get; set; }
-
-        public NbtTagType? ExpectedListType { get; init; }
-
-        public required State? PreviousState { get; init; }
-
-        public required NbtTagType? ParentTagType { get; init; }
-
-        public List<string> ChildrenAdded { get; init; }
-
-        public bool HasExpectedListType(NbtTagType type)
-        {
-            if (this.ExpectedListType == type)
-                return true;
-
-            return this.PreviousState?.HasExpectedListType(type) ?? false;
         }
     }
 }
