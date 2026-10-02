@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 
 namespace Obsidian.Nbt;
 
-public readonly partial struct NbtReader(Stream input, NbtCompression compressionMode = NbtCompression.None)
+public readonly partial struct NbtReader(Stream input, NbtCompression compressionMode = NbtCompression.None) : IEquatable<NbtReader>
 {
     public Stream BaseStream { get; } = compressionMode switch
     {
@@ -117,7 +117,7 @@ public readonly partial struct NbtReader(Stream input, NbtCompression compressio
             _ => throw new InvalidOperationException($"Unknown tag type: {type}")
         };
 
-    private INbtTag ReadArray<T>(string name, Func<T> readElement) where T : struct
+    private NbtArray<T> ReadArray<T>(string name, Func<T> readElement) where T : struct
     {
         int length = ReadInt32();
         if (length < 0)
@@ -215,4 +215,14 @@ public readonly partial struct NbtReader(Stream input, NbtCompression compressio
         };
     }
 
+    // Readers are equal when they read the same stream.
+    public bool Equals(NbtReader other) => ReferenceEquals(this.BaseStream, other.BaseStream);
+
+    public override bool Equals(object? obj) => obj is NbtReader other && this.Equals(other);
+
+    public override int GetHashCode() => RuntimeHelpers.GetHashCode(this.BaseStream);
+
+    public static bool operator ==(NbtReader left, NbtReader right) => left.Equals(right);
+
+    public static bool operator !=(NbtReader left, NbtReader right) => !left.Equals(right);
 }

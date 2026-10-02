@@ -2,10 +2,11 @@
 using Obsidian.Nbt.Utilities;
 using System.IO;
 using System.IO.Compression;
+using System.Runtime.CompilerServices;
 
 namespace Obsidian.Nbt;
 
-public partial struct NbtWriterStream(Stream outstream, NbtCompression compressionMode = NbtCompression.None) : INbtWriter
+public partial struct NbtWriterStream(Stream outstream, NbtCompression compressionMode = NbtCompression.None) : INbtWriter, IEquatable<NbtWriterStream>
 {
     private NbtWriterState? currentState;
     public NbtTagType? RootType { get; private set; }
@@ -375,4 +376,15 @@ public partial struct NbtWriterStream(Stream outstream, NbtCompression compressi
             this.WriteArray(byteArray.Name, byteArray.GetArray());
         }
     }
+
+    // Writers are equal when they write to the same stream.
+    public readonly bool Equals(NbtWriterStream other) => ReferenceEquals(this.BaseStream, other.BaseStream);
+
+    public override readonly bool Equals(object? obj) => obj is NbtWriterStream other && this.Equals(other);
+
+    public override readonly int GetHashCode() => RuntimeHelpers.GetHashCode(this.BaseStream);
+
+    public static bool operator ==(NbtWriterStream left, NbtWriterStream right) => left.Equals(right);
+
+    public static bool operator !=(NbtWriterStream left, NbtWriterStream right) => !left.Equals(right);
 }
