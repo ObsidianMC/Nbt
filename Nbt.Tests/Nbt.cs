@@ -1,5 +1,6 @@
 ﻿using Obsidian.Nbt;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using Xunit;
 
@@ -144,6 +145,38 @@ public class Nbt(ITestOutputHelper output)
         Assert.True(reader.TryReadNextTag(out NbtCompound main));
         Assert.Equal(string.Empty, main.Name);
         Assert.Equal("Bananrama", main.GetString("name"));
+    }
+
+    [Fact]
+    public void WriteListsInsideLists()
+    {
+        var stream = new MemoryStream();
+        var writer = new NbtWriterStream(stream, false);
+
+        // Like a chunk's PostProcessing: a list whose elements are lists, which have no tag type or name of their own.
+        writer.WriteListStart("lists", NbtTagType.List, 2);
+        writer.WriteListStart("", NbtTagType.Int, 2);
+        writer.WriteInt(1);
+        writer.WriteInt(2);
+        writer.EndList();
+        writer.WriteListStart("", NbtTagType.Int, 0);
+        writer.EndList();
+        writer.EndList();
+        writer.WriteString("after", "still read");
+        writer.EndCompound();
+        writer.TryFinish();
+
+        stream.Position = 0;
+
+        var reader = new NbtReader(stream);
+
+        Assert.True(reader.TryReadNextTag(out NbtCompound main));
+        Assert.True(main.TryGetTag("lists", out var tag));
+        var lists = Assert.IsType<NbtList>(tag);
+        Assert.Equal(2, lists.Count);
+        Assert.Equal([1, 2], Assert.IsType<NbtList>(lists[0]).Cast<NbtTag<int>>().Select(element => element.Value));
+        Assert.Empty(Assert.IsType<NbtList>(lists[1]));
+        Assert.Equal("still read", main.GetString("after"));
     }
 
     private void VerifyBigTest(Stream stream)

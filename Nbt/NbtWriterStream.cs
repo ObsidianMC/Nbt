@@ -102,14 +102,20 @@ public partial struct NbtWriterStream(Stream outstream, NbtCompression compressi
 
     public void WriteListStart(string name, NbtTagType listType, int length, bool writeName = true)
     {
+        // A list inside a list is written without its tag type and name, like every element of a list.
+        var inList = this.RootType == NbtTagType.List;
+
         this.Validate(name, NbtTagType.List);
 
         this.SetRootTag(NbtTagType.List, length, listType);
 
-        this.Write(NbtTagType.List);
+        if (!inList)
+        {
+            this.Write(NbtTagType.List);
 
-        if (writeName)
-            this.WriteStringInternal(name);
+            if (writeName)
+                this.WriteStringInternal(name);
+        }
 
         this.Write(listType);
         this.WriteIntInternal(length);
