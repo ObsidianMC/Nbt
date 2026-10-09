@@ -191,8 +191,11 @@ public class NbtNetworkTests
     [Fact]
     public void EndTagReadsAsNoTag()
     {
-        Assert.Null(NbtReader.ReadTag([0x00, 0x0A], false, out var bytesRead));
+        Assert.Null(NbtReader.ReadNetworkTag([0x00, 0x0A], out var bytesRead));
         Assert.Equal(1, bytesRead);
+
+        // A packet always carries the type byte, even for an absent tag.
+        Assert.Throws<EndOfStreamException>(() => NbtReader.ReadNetworkTag([], out _));
     }
 
     [Fact]

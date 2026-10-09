@@ -51,13 +51,20 @@ public readonly partial struct NbtReader(Stream input, NbtCompression compressio
     /// </summary>
     /// <param name="data">The packet bytes from the tag on; they may continue past the tag.</param>
     /// <param name="bytesRead">How many bytes the tag took, including its type.</param>
-    /// <returns>The tag, or null for an end tag (an absent optional tag) or empty data.</returns>
+    /// <returns>The tag, or null for an end tag (an absent optional tag).</returns>
     /// <exception cref="InvalidDataException">
     /// The data is not valid NBT, is nested too deeply or is too big.
     /// </exception>
-    /// <exception cref="EndOfStreamException">The data ends before the tag does.</exception>
-    public static INbtTag? ReadNetworkTag(ReadOnlySpan<byte> data, out int bytesRead) =>
-        ReadTag(data, false, NbtTagParser.NetworkQuota, out bytesRead);
+    /// <exception cref="EndOfStreamException">
+    /// The data ends before the tag does, or is empty: a packet always has at least the tag's type.
+    /// </exception>
+    public static INbtTag? ReadNetworkTag(ReadOnlySpan<byte> data, out int bytesRead)
+    {
+        if (data.IsEmpty)
+            throw new EndOfStreamException("Network NBT needs at least a tag type.");
+
+        return ReadTag(data, false, NbtTagParser.NetworkQuota, out bytesRead);
+    }
 
     /// <summary>Reads the next tag, or returns null for an end tag or at the end of the stream.</summary>
     public INbtTag? ReadNextTag(bool readName = true)
