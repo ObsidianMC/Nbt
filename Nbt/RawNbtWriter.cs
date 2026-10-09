@@ -1,288 +1,187 @@
-﻿using Obsidian.Nbt.Interfaces;
-using Obsidian.Nbt.Utilities;
+using Obsidian.Nbt.Interfaces;
 using System.Buffers;
+using System.IO;
 
 namespace Obsidian.Nbt;
+
+/// <summary>
+/// Writes binary NBT into a pooled in-memory buffer; read the result from <see cref="Data"/> before disposing.
+/// </summary>
+/// <remarks>
+/// The writer tracks the open compounds and lists, so each call writes exactly what its context needs: inside a
+/// compound a tag's type and name come first, inside a list only its payload is written. Network NBT (since 1.20.2)
+/// is the same as file NBT except that the root tag has no name.
+/// </remarks>
 public sealed partial class RawNbtWriter : INbtWriter
 {
-    private const int InitialBufferSize = 256;
-
-    private bool disposed;
+    private const int InitialBufferSize = 4096;
 
     private byte[] data;
-    private NbtWriterState? currentState;
     private int offset;
+    private bool disposed;
 
-    public NbtTagType? RootType { get; private set; }
+    // When set, full buffers are written here instead of growing (used by NbtWriterStream).
+    private readonly Stream? sink;
 
+    private Frame[] frames = new Frame[8];
+    private int depth;
+    private bool rootWritten;
+
+    /// <summary>Starts a file-style root compound with the given name.</summary>
+    public RawNbtWriter(string name) : this(null, false, InitialBufferSize) => this.WriteCompoundStart(name);
+
+    /// <summary>
+    /// Starts a root compound. Network NBT has no root name; otherwise the root is named with an empty string.
+    /// </summary>
+    public RawNbtWriter(bool networked) : this(null, networked, InitialBufferSize) => this.WriteCompoundStart();
+
+    /// <summary>Creates a writer with nothing written; the first tag written becomes the root.</summary>
+    internal RawNbtWriter(Stream? sink, bool networked, int bufferSize)
+    {
+        this.sink = sink;
+        this.Networked = networked;
+        this.data = ArrayPool<byte>.Shared.Rent(bufferSize);
+    }
+
+    /// <summary>The innermost open compound or list, or null when none is open.</summary>
+    public NbtTagType? RootType => this.depth > 0 ? this.frames[this.depth - 1].Type : null;
+
+    /// <summary>Whether the root tag is written without a name, as network NBT is.</summary>
     public bool Networked { get; }
 
     public Span<byte> Data => this.AsSpan();
 
     public int Offset => this.offset;
 
-    public RawNbtWriter(string name)
-    {
-        this.data = ArrayPool<byte>.Shared.Rent(InitialBufferSize);
+    public Span<byte> AsSpan() => new(this.data, 0, this.offset);
 
-        this.Write(NbtTagType.Compound);
-        this.Write(name);
-
-        this.SetRootTag(NbtTagType.Compound);
-    }
-
-    public RawNbtWriter(bool networked)
-    {
-        this.data = ArrayPool<byte>.Shared.Rent(InitialBufferSize);
-        this.Networked = networked;
-
-        this.Write(NbtTagType.Compound);
-        this.SetRootTag(NbtTagType.Compound);
-    }
-
-    public void WriteArray(string? name, ReadOnlySpan<int> values)
-    {
-        this.Write(NbtTagType.IntArray);
-        this.Write(name);
-        this.Write(values.Length);
-
-        for (int i = 0; i < values.Length; i++)
-            this.Write(values[i]);
-    }
-
-    public void WriteArray(string? name, ReadOnlySpan<long> values)
-    {
-        this.Write(NbtTagType.LongArray);
-        this.Write(name);
-        this.Write(values.Length);
-
-        for (int i = 0; i < values.Length; i++)
-            this.Write(values[i]);
-    }
-
-    public void WriteArray(string? name, ReadOnlySpan<byte> values)
-    {
-        this.Write(NbtTagType.ByteArray);
-        this.Write(name);
-        this.Write(values.Length);
-
-        this.Write(values);
-    }
+    internal ReadOnlyMemory<byte> AsMemory() => new(this.data, 0, this.offset);
 
     public void WriteCompoundStart(string name = "")
     {
-        this.Validate(name, NbtTagType.Compound);
+        this.WriteTagHeader(NbtTagType.Compound, name);
 
-        if (this.RootType == NbtTagType.List)
-        {
-            this.SetRootTag(NbtTagType.Compound);
-            return;
-        }
-
-        this.SetRootTag(NbtTagType.Compound);
-
-        this.Write(NbtTagType.Compound);
-        this.Write(name);
+        ref var frame = ref this.PushFrame(NbtTagType.Compound);
+        frame.Names ??= new HashSet<string>(StringComparer.Ordinal);
+        frame.Names.Clear();
     }
 
+    /// <summary>Starts a list of <paramref name="length"/> elements of type <paramref name="listType"/>.</summary>
+    /// <param name="writeName">
+    /// Only used for a root list: whether to write its name. Elements of a list never have names and entries of a
+    /// compound always do.
+    /// </param>
     public void WriteListStart(string name, NbtTagType listType, int length, bool writeName = true)
     {
-        this.Validate(name, NbtTagType.List);
+        ArgumentOutOfRangeException.ThrowIfNegative(length);
 
-        this.SetRootTag(NbtTagType.List, length, listType);
+        if (listType > NbtTagType.LongArray)
+            throw new ArgumentOutOfRangeException(nameof(listType), listType, "Unknown list element type.");
 
-        this.Write(NbtTagType.List);
+        // Vanilla can't read a non-empty list without an element type.
+        if (listType == NbtTagType.End && length > 0)
+            throw new ArgumentException("A non-empty list needs an element type.", nameof(listType));
 
-        if (writeName)
-            this.Write(name);
+        if (this.depth == 0 && !writeName)
+            this.WriteRootHeader(NbtTagType.List, null, false);
+        else
+            this.WriteTagHeader(NbtTagType.List, name);
 
-        this.Write(listType);
-        this.Write(length);
+        ref var frame = ref this.PushFrame(NbtTagType.List);
+        frame.ElementType = listType;
+        frame.Length = length;
+        frame.Count = 0;
+
+        this.WriteByteRaw((byte)listType);
+        this.WriteIntRaw(length);
     }
 
-    public void WriteListTag(INbtTag tag)
+    public void EndList()
     {
-        var name = tag.Name;
+        if (this.RootType != NbtTagType.List)
+            throw new InvalidOperationException("There is no open list to end.");
 
-        switch (tag.Type)
+        ref var frame = ref this.frames[this.depth - 1];
+        if (frame.Count < frame.Length)
         {
-            case NbtTagType.End:
-                throw new InvalidOperationException("Use writer.EndCompound() instead.");
-            case NbtTagType.Byte:
-                if (tag is NbtTag<byte> byteTag)
-                {
-                    this.WriteByte(byteTag.Value);
-                }
-                else if (tag is NbtTag<bool> boolValue)
-                {
-                    this.WriteByte((byte)(boolValue.Value ? 1 : 0));
-                }
-                break;
-            case NbtTagType.Short:
-                this.WriteShort(((NbtTag<short>)tag).Value);
-                break;
-            case NbtTagType.Int:
-                this.WriteInt(((NbtTag<int>)tag).Value);
-                break;
-            case NbtTagType.Long:
-                this.WriteLong(((NbtTag<long>)tag).Value);
-                break;
-            case NbtTagType.Float:
-                this.WriteFloat(((NbtTag<float>)tag).Value);
-                break;
-            case NbtTagType.Double:
-                this.WriteDouble(((NbtTag<double>)tag).Value);
-                break;
-            case NbtTagType.String:
-                this.WriteString(((NbtTag<string>)tag).Value);
-                break;
-            case NbtTagType.List:
-                var list = (NbtList)tag;
-
-                this.WriteListStart(name, list.ListType, list.Count, false);
-
-                foreach (var child in list)
-                    this.WriteListTag(child);
-
-                this.EndList();
-                break;
-            case NbtTagType.Compound:
-                this.WriteCompoundStart();
-
-                foreach (var (_, child) in (NbtCompound)tag)
-                    this.WriteTag(child);
-
-                this.EndCompound();
-                break;
-            case NbtTagType.ByteArray:
-            case NbtTagType.IntArray:
-            case NbtTagType.LongArray:
-                this.WriteArray(tag);
-                break;
-            case NbtTagType.Unknown:
-            default:
-                throw new InvalidOperationException("Unknown tag type");
+            throw new InvalidOperationException(
+                $"List cannot end: it has {frame.Count} of its {frame.Length} elements.");
         }
-    }
 
-    public void WriteTag(INbtTag tag)
-    {
-        var name = tag.Name;
-
-        switch (tag.Type)
-        {
-            case NbtTagType.End:
-                throw new InvalidOperationException("Use writer.EndCompound() instead.");
-            case NbtTagType.Byte:
-                if (tag is NbtTag<byte> byteTag)
-                {
-                    this.WriteByte(name, byteTag.Value);
-                }
-                else if (tag is NbtTag<bool> boolValue)
-                {
-                    this.WriteByte(name, (byte)(boolValue.Value ? 1 : 0));
-                }
-                break;
-            case NbtTagType.Short:
-                this.WriteShort(name, ((NbtTag<short>)tag).Value);
-                break;
-            case NbtTagType.Int:
-                this.WriteInt(name, ((NbtTag<int>)tag).Value);
-                break;
-            case NbtTagType.Long:
-                this.WriteLong(name, ((NbtTag<long>)tag).Value);
-                break;
-            case NbtTagType.Float:
-                this.WriteFloat(name, ((NbtTag<float>)tag).Value);
-                break;
-            case NbtTagType.Double:
-                this.WriteDouble(name, ((NbtTag<double>)tag).Value);
-                break;
-            case NbtTagType.String:
-                this.WriteString(name, ((NbtTag<string>)tag).Value);
-                break;
-            case NbtTagType.List:
-                var list = (NbtList)tag;
-
-                this.WriteListStart(name, list.ListType, list.Count);
-
-                foreach (var child in list)
-                    this.WriteListTag(child);
-
-                this.EndList();
-                break;
-            case NbtTagType.Compound:
-                this.WriteCompoundStart(name);
-
-                foreach (var (_, child) in (NbtCompound)tag)
-                    this.WriteTag(child);
-
-                this.EndCompound();
-                break;
-            case NbtTagType.ByteArray:
-            case NbtTagType.IntArray:
-            case NbtTagType.LongArray:
-                this.WriteArray(tag);
-                break;
-            case NbtTagType.Unknown:
-            default:
-                throw new InvalidOperationException("Unknown tag type");
-        }
+        this.depth--;
     }
 
     public void EndCompound()
     {
         if (this.RootType != NbtTagType.Compound)
-            throw new InvalidOperationException();
+            throw new InvalidOperationException("There is no open compound to end.");
 
-        this.RootType = this.currentState?.ParentTagType ?? NbtTagType.End;
-        this.currentState = this.currentState.PreviousState;
-
-        if (this.currentState != null && this.currentState.ExpectedListType != null)
-        {
-            this.SetRootTag(NbtTagType.List, false);
-            this.Write(NbtTagType.End);
-
-            return;
-        }
-
-        this.Write(NbtTagType.End);
+        this.WriteByteRaw((byte)NbtTagType.End);
+        this.depth--;
     }
 
-    public void EndList()
+    /// <summary>Writes a tag, named with its <see cref="INbtTag.Name"/> when it goes into a compound.</summary>
+    public void WriteTag(INbtTag tag) => this.WriteTag(tag, tag.Name);
+
+    /// <summary>Writes a tag as an element of the open list, ignoring its name.</summary>
+    public void WriteListTag(INbtTag tag) => this.WriteTag(tag, null);
+
+    public void WriteArray(string? name, ReadOnlySpan<int> values)
     {
-        if (this.currentState!.ListIndex < this.currentState?.ListSize)
-            throw new InvalidOperationException("List cannot end because its size is smaller than the pre-defined size.");
-
-        if (this.RootType != NbtTagType.List)
-            throw new InvalidOperationException();
-
-        this.RootType = this.currentState?.ParentTagType ?? NbtTagType.End;
-
-        this.currentState = this.currentState.PreviousState;
+        this.WriteTagHeader(NbtTagType.IntArray, name);
+        this.WriteIntRaw(values.Length);
+        this.WriteIntsRaw(values);
     }
+
+    public void WriteArray(string? name, ReadOnlySpan<long> values)
+    {
+        this.WriteTagHeader(NbtTagType.LongArray, name);
+        this.WriteIntRaw(values.Length);
+        this.WriteLongsRaw(values);
+    }
+
+    public void WriteArray(string? name, ReadOnlySpan<byte> values)
+    {
+        this.WriteTagHeader(NbtTagType.ByteArray, name);
+        this.WriteIntRaw(values.Length);
+        this.WriteBytesRaw(values);
+    }
+
+    /// <summary>Writes a raw tag type byte, without any checks.</summary>
+    public void Write(NbtTagType tagType) => this.WriteByteRaw((byte)tagType);
 
     public void TryFinish()
     {
-        if (this.currentState != null)
-            throw new InvalidOperationException($"Unable to close writer. Root tag has yet to be closed.");//TODO maybe more info here??
+        this.ThrowIfUnclosed();
+
+        if (this.sink is not null)
+        {
+            this.FlushToSink();
+            this.sink.Flush();
+        }
     }
 
-    public Task TryFinishAsync()
+    public async Task TryFinishAsync()
     {
-        this.TryFinish();
-        return Task.CompletedTask;
-    }
+        this.ThrowIfUnclosed();
 
-    public Span<byte> AsSpan() => new(data, 0, offset);
+        if (this.sink is not null)
+        {
+            await this.FlushToSinkAsync();
+            await this.sink.FlushAsync();
+        }
+    }
 
     public void Dispose()
     {
-        ObjectDisposedException.ThrowIf(this.disposed, nameof(RawNbtWriter));
+        if (this.disposed)
+            return;
 
         this.disposed = true;
 
         ArrayPool<byte>.Shared.Return(this.data);
+        this.data = [];
+        this.offset = 0;
     }
 
     public ValueTask DisposeAsync()
@@ -292,58 +191,168 @@ public sealed partial class RawNbtWriter : INbtWriter
         return default;
     }
 
-    public void Write(NbtTagType tagType) => this.Write((byte)tagType);
-
-    private void WriteArray(INbtTag array)
+    /// <summary>Writes the buffered bytes to the sink stream and empties the buffer.</summary>
+    internal void FlushToSink()
     {
-        this.Validate(array.Name, array.Type);
+        if (this.offset == 0)
+            return;
 
-        if (array is NbtArray<int> intArray)
+        this.sink!.Write(this.data, 0, this.offset);
+        this.offset = 0;
+    }
+
+    internal async ValueTask FlushToSinkAsync()
+    {
+        if (this.offset == 0)
+            return;
+
+        await this.sink!.WriteAsync(this.data.AsMemory(0, this.offset));
+        this.offset = 0;
+    }
+
+    private void WriteTag(INbtTag tag, string? name)
+    {
+        switch (tag)
         {
-            this.WriteArray(intArray.Name, intArray.GetArray());
-        }
-        else if (array is NbtArray<long> longArray)
-        {
-            this.WriteArray(longArray.Name, longArray.GetArray());
-        }
-        else if (array is NbtArray<byte> byteArray)
-        {
-            this.WriteArray(byteArray.Name, byteArray.GetArray());
+            case NbtCompound compound:
+                this.WriteCompoundStart(name!);
+
+                // The key is what the compound is read back by, even when it differs from the child's Name.
+                foreach (var (key, child) in compound)
+                    this.WriteTag(child, key);
+
+                this.EndCompound();
+                break;
+            case NbtList list:
+                this.WriteListStart(name!, list.ListType, list.Count);
+
+                foreach (var child in list)
+                    this.WriteTag(child, null);
+
+                this.EndList();
+                break;
+            case NbtTag<string> stringTag:
+                this.WriteString(name!, stringTag.Value!);
+                break;
+            case NbtTag<int> intTag:
+                this.WriteInt(name!, intTag.Value);
+                break;
+            case NbtTag<byte> byteTag:
+                this.WriteByte(name!, byteTag.Value);
+                break;
+            case NbtTag<bool> boolTag:
+                this.WriteBool(name!, boolTag.Value);
+                break;
+            case NbtTag<short> shortTag:
+                this.WriteShort(name!, shortTag.Value);
+                break;
+            case NbtTag<long> longTag:
+                this.WriteLong(name!, longTag.Value);
+                break;
+            case NbtTag<float> floatTag:
+                this.WriteFloat(name!, floatTag.Value);
+                break;
+            case NbtTag<double> doubleTag:
+                this.WriteDouble(name!, doubleTag.Value);
+                break;
+            case NbtArray<long> longArray:
+                this.WriteArray(name, longArray.GetArray());
+                break;
+            case NbtArray<int> intArray:
+                this.WriteArray(name, intArray.GetArray());
+                break;
+            case NbtArray<byte> byteArray:
+                this.WriteArray(name, byteArray.GetArray());
+                break;
+            default:
+                throw new InvalidOperationException($"Unsupported tag: {tag.GetType()} ({tag.Type}).");
         }
     }
 
-    private void SetRootTag(NbtTagType type, bool addRoot = true)
+    /// <summary>
+    /// Checks a tag against the open container and writes what precedes its payload there: its type and name in a
+    /// compound, nothing in a list.
+    /// </summary>
+    private void WriteTagHeader(NbtTagType type, string? name)
     {
-        if (addRoot)
+        if (this.depth == 0)
         {
-            this.currentState = new()
-            {
-                PreviousState = this.currentState,
-                ExpectedListType = null,
-                ActiveListType = this.RootType == NbtTagType.List ? this.currentState?.ExpectedListType ?? this.currentState?.ActiveListType : this.currentState?.ActiveListType,
-                ParentTagType = this.RootType ?? type,
-                ChildrenAdded = []
-            };
+            this.WriteRootHeader(type, name, true);
+            return;
         }
 
-        this.RootType = type;
+        ref var frame = ref this.frames[this.depth - 1];
+
+        if (frame.Type == NbtTagType.List)
+        {
+            if (!string.IsNullOrEmpty(name))
+                throw new InvalidOperationException("Tags inside lists cannot be named.");
+
+            if (type != frame.ElementType)
+                throw new InvalidOperationException($"Expected list type: {frame.ElementType}. Got: {type}");
+
+            if (frame.Count >= frame.Length)
+                throw new InvalidOperationException($"Exceeded the list's length of {frame.Length}.");
+
+            frame.Count++;
+            return;
+        }
+
+        // Empty names are valid NBT: vanilla writes heterogeneous lists as compounds with an empty key.
+        if (name is null)
+            throw new ArgumentException($"Tags inside a compound tag must have a name. Tag({type})");
+
+        if (!frame.Names!.Add(name))
+            throw new ArgumentException($"Tag with name {name} already exists.");
+
+        this.WriteByteRaw((byte)type);
+        this.WriteStringRaw(name);
     }
 
-    private void SetRootTag(NbtTagType type, int listSize, NbtTagType listType, bool addRoot = true)
+    private void WriteRootHeader(NbtTagType type, string? name, bool writeName)
     {
-        if (addRoot)
-        {
-            this.currentState = new()
-            {
-                ExpectedListType = listType,
-                ActiveListType = listType,
-                ListSize = listSize,
-                ListIndex = 0,
-                PreviousState = this.currentState,
-                ParentTagType = this.RootType ?? type
-            };
-        }
+        if (this.rootWritten)
+            throw new InvalidOperationException("The root tag has already been written.");
 
-        this.RootType = type;
+        this.rootWritten = true;
+
+        this.WriteByteRaw((byte)type);
+
+        if (writeName && !this.Networked)
+            this.WriteStringRaw(name ?? string.Empty);
+    }
+
+    private ref Frame PushFrame(NbtTagType type)
+    {
+        if (this.depth == this.frames.Length)
+            Array.Resize(ref this.frames, this.frames.Length * 2);
+
+        ref var frame = ref this.frames[this.depth++];
+        frame.Type = type;
+
+        return ref frame;
+    }
+
+    private void ThrowIfUnclosed()
+    {
+        if (this.depth > 0)
+        {
+            throw new InvalidOperationException(
+                $"Unable to close writer. {this.depth} compound or list tag(s) have yet to be closed.");
+        }
+    }
+
+    /// <summary>An open compound or list.</summary>
+    private struct Frame
+    {
+        public NbtTagType Type;
+
+        // Lists: the element type, the declared length and the elements written so far.
+        public NbtTagType ElementType;
+        public int Length;
+        public int Count;
+
+        // Compounds: the names written so far, to reject duplicates. Kept between uses of the frame to reuse it.
+        public HashSet<string>? Names;
     }
 }

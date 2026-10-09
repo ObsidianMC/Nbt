@@ -1,6 +1,7 @@
 ﻿using Obsidian.Nbt.Exceptions;
 using System.Collections;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace Obsidian.Nbt;
@@ -46,7 +47,9 @@ public sealed class NbtCompound : INbtTag, IEnumerable<KeyValuePair<string, INbt
 
     public bool HasTag(string name) => this.children.ContainsKey(name);
 
-    public bool TryGetTag(string name, [MaybeNullWhen(false)] out INbtTag tag) => this.children.TryGetValue(name, out tag);
+    public bool TryGetTag(string name, [MaybeNullWhen(false)] out INbtTag tag) =>
+        this.children.TryGetValue(name, out tag);
+
     public bool TryGetTag<T>(string name, [MaybeNullWhen(false)] out T tag) where T : INbtTag
     {
         if (this.TryGetTag(name, out var childTag) && childTag is T matchedTag)
@@ -150,10 +153,28 @@ public sealed class NbtCompound : INbtTag, IEnumerable<KeyValuePair<string, INbt
         this.children.Add(name, tag);
     }
 
+    /// <summary>
+    /// Stores a tag read from binary NBT. Unlike <see cref="Add(string, INbtTag)"/>, empty names are allowed and a
+    /// repeated name replaces the earlier tag, as vanilla reads them: heterogeneous lists are saved and sent as
+    /// compounds with an empty key.
+    /// </summary>
+    /// <returns>Whether the name was new to the compound.</returns>
+    internal bool SetReadTag(string name, INbtTag tag)
+    {
+        tag.Parent = this;
+
+        ref var slot = ref CollectionsMarshal.GetValueRefOrAddDefault(this.children, name, out var exists);
+        slot = tag;
+
+        return !exists;
+    }
+
     public IEnumerator<KeyValuePair<string, INbtTag>> GetEnumerator() =>
         this.children.GetEnumerator();
 
     IEnumerator IEnumerable.GetEnumerator() => this.GetEnumerator();
 
-    private T? GetTagValue<T>(string name) => this.TryGetTag(name, out var tag) && tag is NbtTag<T> actualTag ? actualTag.Value : throw new TagNotFoundException(name);
+    private T? GetTagValue<T>(string name) => this.TryGetTag(name, out var tag) && tag is NbtTag<T> actualTag
+        ? actualTag.Value
+        : throw new TagNotFoundException(name);
 }

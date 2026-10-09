@@ -78,7 +78,7 @@ public static class NbtSerializer
         writer.EndCompound();
         await writer.TryFinishAsync();
 
-        await WritePayloadAsync(stream, writer.AsSpan().ToArray(), options.Compression, cancellationToken);
+        await WritePayloadAsync(stream, writer.AsMemory(), options.Compression, cancellationToken);
     }
 
     public static T? Deserialize<T>(NbtCompound compound, NbtSerializerOptions? options = null)
@@ -118,7 +118,8 @@ public static class NbtSerializer
         if (compression == NbtCompression.None)
             return ReadCompoundCore(stream);
 
-        using var readerStream = CreateDecompressionStream(stream, compression);
+        // The decompression stream is ours, so it can be read ahead; small reads straight from it are slow.
+        using var readerStream = new BufferedStream(CreateDecompressionStream(stream, compression));
         return ReadCompoundCore(readerStream);
     }
 
@@ -154,7 +155,7 @@ public static class NbtSerializer
         }
     }
 
-    private static async ValueTask WritePayloadAsync(Stream stream, byte[] payload, NbtCompression compression, CancellationToken cancellationToken)
+    private static async ValueTask WritePayloadAsync(Stream stream, ReadOnlyMemory<byte> payload, NbtCompression compression, CancellationToken cancellationToken)
     {
         switch (compression)
         {

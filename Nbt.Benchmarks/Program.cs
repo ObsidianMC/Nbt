@@ -4,9 +4,7 @@ namespace BenchmarkSuite1
 {
     internal class Program
     {
-        static void Main(string[] args)
-        {
-            var _ = BenchmarkRunner.Run(typeof(Program).Assembly);
-        }
+        // Pass BenchmarkDotNet arguments through, e.g. --filter *NbtIoBenchmarks* to run one class.
+        static void Main(string[] args) => BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
     }
 }

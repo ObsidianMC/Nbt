@@ -1,41 +1,33 @@
-﻿using System.Buffers.Binary;
+using System.Buffers.Binary;
 using System.IO;
-using System.Runtime.CompilerServices;
 
 namespace Obsidian.Nbt;
+
 public partial struct NbtReader
 {
-    private const int StackallocStringThreshold = 256;
-
     public byte ReadByte()
     {
         var value = this.BaseStream.ReadByte();
         return value >= 0 ? (byte)value : throw new EndOfStreamException();
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    /// <summary>Reads a string: an unsigned 16-bit byte count, then modified UTF-8.</summary>
     public string ReadString()
     {
-        var length = this.ReadInt16();
-
-        if (length <= 0)
-            return string.Empty;
-
-        if (length <= StackallocStringThreshold)
+        var parser = new NbtTagParser<StreamNbtInput>(new StreamNbtInput(this.BaseStream), NbtTagParser.Unlimited);
+        try
         {
-            Span<byte> buffer = stackalloc byte[length];
-            this.BaseStream.ReadExactly(buffer);
-            return ModifiedUtf8.GetString(buffer);
+            return parser.ReadString();
         }
-
-        var rentedBuffer = GC.AllocateUninitializedArray<byte>(length);
-        this.BaseStream.ReadExactly(rentedBuffer);
-        return ModifiedUtf8.GetString(rentedBuffer);
+        finally
+        {
+            parser.Input.Dispose();
+        }
     }
 
     public short ReadInt16()
     {
-        Span<byte> scratch = stackalloc byte[2];
+        Span<byte> scratch = stackalloc byte[sizeof(short)];
         this.BaseStream.ReadExactly(scratch);
 
         return BinaryPrimitives.ReadInt16BigEndian(scratch);
@@ -43,7 +35,7 @@ public partial struct NbtReader
 
     public int ReadInt32()
     {
-        Span<byte> scratch = stackalloc byte[4];
+        Span<byte> scratch = stackalloc byte[sizeof(int)];
         this.BaseStream.ReadExactly(scratch);
 
         return BinaryPrimitives.ReadInt32BigEndian(scratch);
@@ -51,7 +43,7 @@ public partial struct NbtReader
 
     public long ReadInt64()
     {
-        Span<byte> scratch = stackalloc byte[8];
+        Span<byte> scratch = stackalloc byte[sizeof(long)];
         this.BaseStream.ReadExactly(scratch);
 
         return BinaryPrimitives.ReadInt64BigEndian(scratch);
@@ -59,7 +51,7 @@ public partial struct NbtReader
 
     public float ReadSingle()
     {
-        Span<byte> scratch = stackalloc byte[4];
+        Span<byte> scratch = stackalloc byte[sizeof(float)];
         this.BaseStream.ReadExactly(scratch);
 
         return BinaryPrimitives.ReadSingleBigEndian(scratch);
@@ -67,7 +59,7 @@ public partial struct NbtReader
 
     public double ReadDouble()
     {
-        Span<byte> scratch = stackalloc byte[8];
+        Span<byte> scratch = stackalloc byte[sizeof(double)];
         this.BaseStream.ReadExactly(scratch);
 
         return BinaryPrimitives.ReadDoubleBigEndian(scratch);

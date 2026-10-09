@@ -1,227 +1,231 @@
-﻿using Obsidian.Nbt.Utilities;
 using System.Buffers;
 using System.Buffers.Binary;
-using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace Obsidian.Nbt;
+
 public partial class RawNbtWriter
 {
     public void WriteString(string value)
     {
-        this.Validate(null, NbtTagType.String);
-        this.Write(value);
+        ArgumentNullException.ThrowIfNull(value);
+
+        this.WriteTagHeader(NbtTagType.String, null);
+        this.WriteStringRaw(value);
     }
 
     public void WriteString(string name, string value)
     {
-        this.Validate(name, NbtTagType.String);
+        ArgumentNullException.ThrowIfNull(value);
 
-        this.Write(NbtTagType.String);
-        this.Write(name);
-        this.Write(value);
+        this.WriteTagHeader(NbtTagType.String, name);
+        this.WriteStringRaw(value);
     }
 
     public void WriteByte(byte value)
     {
-        this.Validate(null, NbtTagType.Byte);
-        this.Write(value);
+        this.WriteTagHeader(NbtTagType.Byte, null);
+        this.WriteByteRaw(value);
     }
 
     public void WriteByte(string name, byte value)
     {
-        this.Validate(name, NbtTagType.Byte);
-
-        this.Write(NbtTagType.Byte);
-        this.Write(name);
-        this.Write(value);
+        this.WriteTagHeader(NbtTagType.Byte, name);
+        this.WriteByteRaw(value);
     }
 
-    public unsafe void WriteBool(bool value) => this.WriteByte(*(byte*)&value);
+    public void WriteBool(bool value) => this.WriteByte(value ? (byte)1 : (byte)0);
 
-    public unsafe void WriteBool(string name, bool value) => this.WriteByte(name, *(byte*)&value);
+    public void WriteBool(string name, bool value) => this.WriteByte(name, value ? (byte)1 : (byte)0);
 
     public void WriteShort(short value)
     {
-        this.Validate(null, NbtTagType.Short);
-        this.Write(value);
+        this.WriteTagHeader(NbtTagType.Short, null);
+        this.WriteShortRaw(value);
     }
 
     public void WriteShort(string name, short value)
     {
-        this.Validate(name, NbtTagType.Short);
-
-        this.Write(NbtTagType.Short);
-        this.Write(name);
-        this.Write(value);
+        this.WriteTagHeader(NbtTagType.Short, name);
+        this.WriteShortRaw(value);
     }
 
     public void WriteInt(int value)
     {
-        this.Validate(null, NbtTagType.Int);
-        this.Write(value);
+        this.WriteTagHeader(NbtTagType.Int, null);
+        this.WriteIntRaw(value);
     }
 
     public void WriteInt(string name, int value)
     {
-        this.Validate(name, NbtTagType.Int);
-
-        this.Write(NbtTagType.Int);
-        this.Write(name);
-        this.Write(value);
+        this.WriteTagHeader(NbtTagType.Int, name);
+        this.WriteIntRaw(value);
     }
 
     public void WriteLong(long value)
     {
-        this.Validate(null, NbtTagType.Long);
-        this.Write(value);
+        this.WriteTagHeader(NbtTagType.Long, null);
+        this.WriteLongRaw(value);
     }
 
     public void WriteLong(string name, long value)
     {
-        this.Validate(name, NbtTagType.Long);
-
-        this.Write(NbtTagType.Long);
-        this.Write(name);
-        this.Write(value);
+        this.WriteTagHeader(NbtTagType.Long, name);
+        this.WriteLongRaw(value);
     }
 
     public void WriteFloat(float value)
     {
-        this.Validate(null, NbtTagType.Float);
-        this.Write(value);
+        this.WriteTagHeader(NbtTagType.Float, null);
+        this.WriteIntRaw(BitConverter.SingleToInt32Bits(value));
     }
 
     public void WriteFloat(string name, float value)
     {
-        this.Validate(name, NbtTagType.Float);
-
-        this.Write(NbtTagType.Float);
-        this.Write(name);
-        this.Write(value);
+        this.WriteTagHeader(NbtTagType.Float, name);
+        this.WriteIntRaw(BitConverter.SingleToInt32Bits(value));
     }
 
     public void WriteDouble(double value)
     {
-        this.Validate(null, NbtTagType.Double);
-        this.Write(value);
+        this.WriteTagHeader(NbtTagType.Double, null);
+        this.WriteLongRaw(BitConverter.DoubleToInt64Bits(value));
     }
 
     public void WriteDouble(string name, double value)
     {
-        this.Validate(name, NbtTagType.Double);
-
-        this.Write(NbtTagType.Double);
-        this.Write(name);
-        this.Write(value);
+        this.WriteTagHeader(NbtTagType.Double, name);
+        this.WriteLongRaw(BitConverter.DoubleToInt64Bits(value));
     }
 
-
-    #region primitive writing
-    private void Write(string value)
-    {
-        if (value.Length > short.MaxValue)
-            throw new InvalidOperationException($"value length must be less than {short.MaxValue}");
-
-        if (!ModifiedUtf8.TryGetBytes(value, out var buffer))
-            throw new InvalidOperationException("Failed to get bytes from string.");
-
-        this.Write((short)buffer.Length);
-        this.Write(buffer);
-    }
-
-    private void Write(byte value) => this.Write([value]);
-
-    private void Write(short value)
-    {
-        Span<byte> span = stackalloc byte[2];
-        BinaryPrimitives.WriteInt16BigEndian(span, value);
-        this.Write(span);
-    }
-
-    private void Write(int value)
-    {
-        Span<byte> span = stackalloc byte[4];
-        BinaryPrimitives.WriteInt32BigEndian(span, value);
-        this.Write(span);
-    }
-
-    private void Write(long value)
-    {
-        Span<byte> span = stackalloc byte[8];
-        BinaryPrimitives.WriteInt64BigEndian(span, value);
-        this.Write(span);
-    }
-
-    private void Write(double value)
-    {
-        Span<byte> span = stackalloc byte[8];
-        BinaryPrimitives.WriteDoubleBigEndian(span, value);
-        this.Write(span);
-    }
-
-    private void Write(float value)
-    {
-        Span<byte> span = stackalloc byte[4];
-        BinaryPrimitives.WriteSingleBigEndian(span, value);
-        this.Write(span);
-    }
-
-    private void Write(ReadOnlySpan<byte> buffer)
-    {
-        Reserve(buffer.Length);
-        buffer.CopyTo(new Span<byte>(this.data, this.offset, buffer.Length));
-        this.offset += buffer.Length;
-    }
-
-    
-
-    /// <summary>
-    /// Reserve the buffer of the given capacity
-    /// </summary>
+    /// <summary>Makes room for <paramref name="capacity"/> more bytes.</summary>
     public void Reserve(int capacity)
     {
-        Debug.Assert(capacity >= 0);
-        var required = offset + capacity;
+        if (this.data.Length - this.offset < capacity)
+            this.Grow(capacity);
+    }
 
-        if (required > data.LongLength)
+    private void Grow(int capacity)
+    {
+        ObjectDisposedException.ThrowIf(this.disposed, this);
+
+        if (this.sink is not null)
         {
-            var newCapacity = Math.Max(required, data.Length * 2);
-            ArrayPool<byte>.Shared.Resize(ref data, newCapacity);
+            this.FlushToSink();
+
+            if (this.data.Length >= capacity)
+                return;
+        }
+
+        var newSize = Math.Max(this.offset + capacity, this.data.Length * 2);
+        var newData = ArrayPool<byte>.Shared.Rent(newSize);
+
+        this.data.AsSpan(0, this.offset).CopyTo(newData);
+        ArrayPool<byte>.Shared.Return(this.data);
+
+        this.data = newData;
+    }
+
+    // Java's DataOutput.writeUTF format: an unsigned 16-bit byte count, then modified UTF-8. Clients can't read more.
+    private void WriteStringRaw(string value)
+    {
+        if (!ModifiedUtf8.TryGetByteCount(value, out var byteCount))
+        {
+            throw new ArgumentException(
+                $"String is longer than NBT allows ({ushort.MaxValue} bytes of modified UTF-8).", nameof(value));
+        }
+
+        this.Reserve(sizeof(ushort) + byteCount);
+
+        var destination = this.data.AsSpan(this.offset, sizeof(ushort) + byteCount);
+        BinaryPrimitives.WriteUInt16BigEndian(destination, (ushort)byteCount);
+        ModifiedUtf8.GetBytesCommon(value, destination[sizeof(ushort)..]);
+
+        this.offset += destination.Length;
+    }
+
+    private void WriteByteRaw(byte value)
+    {
+        this.Reserve(sizeof(byte));
+        this.data[this.offset++] = value;
+    }
+
+    private void WriteShortRaw(short value)
+    {
+        this.Reserve(sizeof(short));
+        BinaryPrimitives.WriteInt16BigEndian(this.data.AsSpan(this.offset), value);
+        this.offset += sizeof(short);
+    }
+
+    private void WriteIntRaw(int value)
+    {
+        this.Reserve(sizeof(int));
+        BinaryPrimitives.WriteInt32BigEndian(this.data.AsSpan(this.offset), value);
+        this.offset += sizeof(int);
+    }
+
+    private void WriteLongRaw(long value)
+    {
+        this.Reserve(sizeof(long));
+        BinaryPrimitives.WriteInt64BigEndian(this.data.AsSpan(this.offset), value);
+        this.offset += sizeof(long);
+    }
+
+    private void WriteBytesRaw(ReadOnlySpan<byte> values)
+    {
+        while (!values.IsEmpty)
+        {
+            var count = this.ChunkLength(values.Length, sizeof(byte));
+            this.Reserve(count);
+
+            values[..count].CopyTo(this.data.AsSpan(this.offset));
+
+            this.offset += count;
+            values = values[count..];
         }
     }
-    #endregion
 
-    private void Validate(string name, NbtTagType type)
+    // Arrays are converted to big-endian in bulk, which is vectorized, rather than one value at a time.
+    private void WriteIntsRaw(ReadOnlySpan<int> values)
     {
-        if (this.TryValidateList(name, type))
-            return;
+        while (!values.IsEmpty)
+        {
+            var count = this.ChunkLength(values.Length, sizeof(int));
+            this.Reserve(count * sizeof(int));
 
-        if (string.IsNullOrWhiteSpace(name))
-            throw new ArgumentException($"Tags inside a compound tag must have a name. Tag({type})");
+            var destination = MemoryMarshal.Cast<byte, int>(this.data.AsSpan(this.offset, count * sizeof(int)));
+            if (BitConverter.IsLittleEndian)
+                BinaryPrimitives.ReverseEndianness(values[..count], destination);
+            else
+                values[..count].CopyTo(destination);
 
-        if (this.currentState.ChildrenAdded.Contains(name))
-            throw new ArgumentException($"Tag with name {name} already exists.");
-
-        this.currentState.ChildrenAdded.Add(name);
+            this.offset += count * sizeof(int);
+            values = values[count..];
+        }
     }
 
-    private bool TryValidateList(string name, NbtTagType type)
+    private void WriteLongsRaw(ReadOnlySpan<long> values)
     {
-        if (this.RootType != NbtTagType.List)
-            return false;
+        while (!values.IsEmpty)
+        {
+            var count = this.ChunkLength(values.Length, sizeof(long));
+            this.Reserve(count * sizeof(long));
 
-        if (!string.IsNullOrWhiteSpace(name))
-            throw new InvalidOperationException("Tags inside lists cannot be named.");
+            var destination = MemoryMarshal.Cast<byte, long>(this.data.AsSpan(this.offset, count * sizeof(long)));
+            if (BitConverter.IsLittleEndian)
+                BinaryPrimitives.ReverseEndianness(values[..count], destination);
+            else
+                values[..count].CopyTo(destination);
 
-        if (!this.currentState!.HasExpectedListType(type))
-            throw new InvalidOperationException($"Expected list type: {this.currentState!.ExpectedListType}. Got: {type}");
-        else if (!string.IsNullOrEmpty(name))
-            throw new InvalidOperationException("Tags inside lists must be nameless.");
-        else if (this.currentState!.ListIndex > this.currentState!.ListSize)
-            throw new IndexOutOfRangeException("Exceeded pre-defined list size");
-
-        this.currentState!.ListIndex++;
-
-        return true;
+            this.offset += count * sizeof(long);
+            values = values[count..];
+        }
     }
+
+    /// <summary>
+    /// How many of <paramref name="length"/> array elements to write at once: all of them in memory, and at most a
+    /// buffer's worth with a sink, so streaming a large array doesn't grow the buffer to hold all of it.
+    /// </summary>
+    private int ChunkLength(int length, int elementSize) =>
+        this.sink is null ? length : Math.Min(length, this.data.Length / elementSize);
 }

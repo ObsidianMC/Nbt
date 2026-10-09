@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
+using System.Text;
 
 namespace Obsidian.Nbt;
 
@@ -27,7 +28,9 @@ public static class ModifiedUtf8
     /// Encodes a span of characters into an array of bytes.
     /// </summary>
     /// <param name="chars">The span of characters to encode.</param>
-    /// <param name="bytes">An array of bytes containing the results of encoding the specified sequence of characters.</param>
+    /// <param name="bytes">
+    /// An array of bytes containing the results of encoding the specified sequence of characters.
+    /// </param>
     /// <returns><c>true</c> if encoding the characters was successful; otherwise <c>false</c></returns>
     public static bool TryGetBytes(ReadOnlySpan<char> chars, [NotNullWhen(true)] out byte[]? bytes)
     {
@@ -177,13 +180,22 @@ public static class ModifiedUtf8
     /// Decodes a span of bytes into a string and returns a value indicating whether the conversion was successfull.
     /// </summary>
     /// <param name="bytes">The span of bytes to decode.</param>
-    /// <param name="string">A <see cref="string"/> containing the results of decoding the specified sequence of bytes.</param>
+    /// <param name="string">
+    /// A <see cref="string"/> containing the results of decoding the specified sequence of bytes.
+    /// </param>
     /// <returns><c>true</c> if decoding the bytes was successful; otherwise <c>false</c></returns>
     public static bool TryGetString(ReadOnlySpan<byte> bytes, [NotNullWhen(true)] out string? @string)
     {
         if (bytes.IsEmpty)
         {
             @string = string.Empty;
+            return true;
+        }
+
+        // Nearly all NBT names and most values are ASCII, which decode one byte to one char; both steps are vectorized.
+        if (Ascii.IsValid(bytes))
+        {
+            @string = Encoding.ASCII.GetString(bytes);
             return true;
         }
 
@@ -380,7 +392,8 @@ public static class ModifiedUtf8
     }
 
     /// <summary>
-    /// Calculates the number of bytes produced by encoding the specified character span, unless the number of bytes is more than the encoding supports.
+    /// Calculates the number of bytes produced by encoding the specified character span, unless the number of bytes
+    /// is more than the encoding supports.
     /// </summary>
     /// <param name="chars">The span that contains the set of characters to encode.</param>
     /// <param name="byteCount">The number of bytes produced by encoding the specified character span.</param>
@@ -433,8 +446,9 @@ public static class ModifiedUtf8
             Vector256<ushort> blend = Avx2.BlendVariable(vustr, Vector256.Create((ushort)0x0080), mask);
 
             Vector256<short> vstr = Avx2.ShiftRightLogical(blend, 1).AsInt16();
-            counter = Avx2.Subtract(counter, Avx2.CompareGreaterThan(vstr, Vector256.Create(TwoBytesBorder))); // Count all characters that will produce at least two bytes
-            counter = Avx2.Subtract(counter, Avx2.CompareGreaterThan(vstr, Vector256.Create(ThreeBytesBorder))); // Count all characters that will produce three bytes
+            // Count all characters that will produce at least two bytes, then those that will produce three.
+            counter = Avx2.Subtract(counter, Avx2.CompareGreaterThan(vstr, Vector256.Create(TwoBytesBorder)));
+            counter = Avx2.Subtract(counter, Avx2.CompareGreaterThan(vstr, Vector256.Create(ThreeBytesBorder)));
         }
 
         counter = Avx2.HorizontalAdd(counter, counter); // 128

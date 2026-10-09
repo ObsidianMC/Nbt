@@ -1,4 +1,3 @@
-﻿using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Compression;
@@ -6,61 +5,104 @@ using System.Runtime.CompilerServices;
 
 namespace Obsidian.Nbt;
 
-public readonly partial struct NbtReader(Stream input, NbtCompression compressionMode = NbtCompression.None) : IEquatable<NbtReader>
+/// <summary>
+/// Reads binary NBT from a stream. For network NBT (a root tag without a name, since 1.20.2) pass
+/// <c>readName: false</c>. For data already in memory, <see cref="ReadTag"/> and, for packets,
+/// <see cref="ReadNetworkTag"/> avoid the stream entirely.
+/// </summary>
+/// <remarks>
+/// Reading from a <see cref="MemoryStream"/> whose buffer is exposed parses its buffer in place. Other streams are
+/// read only as far as the tag goes, so callers can keep reading or seeking after it.
+/// </remarks>
+public readonly partial struct NbtReader(Stream input, NbtCompression compressionMode = NbtCompression.None)
+    : IEquatable<NbtReader>
 {
+    // The reader owns the decompression stream, so it can buffer ahead of the tag; reading a compressed stream a few
+    // bytes at a time is very slow otherwise.
     public Stream BaseStream { get; } = compressionMode switch
     {
-        NbtCompression.GZip => new GZipStream(input, CompressionMode.Decompress),
-        NbtCompression.ZLib => new ZLibStream(input, CompressionMode.Decompress),
+        NbtCompression.GZip => new BufferedStream(new GZipStream(input, CompressionMode.Decompress)),
+        NbtCompression.ZLib => new BufferedStream(new ZLibStream(input, CompressionMode.Decompress)),
         _ => input
     };
 
-   
+    /// <summary>
+    /// The memory budget for network NBT, by vanilla's estimate of each tag's size: FriendlyByteBuf.readNbt allows
+    /// 2 MiB, and <see cref="ReadNetworkTag"/> rejects what vanilla rejects.
+    /// </summary>
+    public const long NetworkQuota = NbtTagParser.NetworkQuota;
+
+    /// <summary>
+    /// Reads one tag from <paramref name="data"/>: its type, its name when <paramref name="readName"/> is set, and its
+    /// payload. For NBT from a client use <see cref="ReadNetworkTag"/>, which also limits its size.
+    /// </summary>
+    /// <param name="data">The bytes to read; they may continue past the tag.</param>
+    /// <param name="readName">Whether the root tag has a name.</param>
+    /// <param name="bytesRead">How many bytes the tag took, including its type.</param>
+    /// <returns>The tag, or null for an end tag or empty data.</returns>
+    /// <exception cref="InvalidDataException">The data is not valid NBT or is nested too deeply.</exception>
+    /// <exception cref="EndOfStreamException">The data ends before the tag does.</exception>
+    public static INbtTag? ReadTag(ReadOnlySpan<byte> data, bool readName, out int bytesRead) =>
+        ReadTag(data, readName, NbtTagParser.Unlimited, out bytesRead);
+
+    /// <summary>
+    /// Reads one network NBT tag from <paramref name="data"/> the way vanilla reads it from a packet: its type, no
+    /// name, then its payload, rejecting tags bigger than <see cref="NetworkQuota"/>.
+    /// </summary>
+    /// <param name="data">The packet bytes from the tag on; they may continue past the tag.</param>
+    /// <param name="bytesRead">How many bytes the tag took, including its type.</param>
+    /// <returns>The tag, or null for an end tag (an absent optional tag) or empty data.</returns>
+    /// <exception cref="InvalidDataException">
+    /// The data is not valid NBT, is nested too deeply or is too big.
+    /// </exception>
+    /// <exception cref="EndOfStreamException">The data ends before the tag does.</exception>
+    public static INbtTag? ReadNetworkTag(ReadOnlySpan<byte> data, out int bytesRead) =>
+        ReadTag(data, false, NbtTagParser.NetworkQuota, out bytesRead);
+
+    /// <summary>Reads the next tag, or returns null for an end tag or at the end of the stream.</summary>
     public INbtTag? ReadNextTag(bool readName = true)
     {
-        var firstType = this.ReadTagType();
-        if (firstType == NbtTagType.End)
-            return null;
-
-        string tagName = readName ? this.ReadString() : string.Empty;
-
-        return firstType switch
+        if (this.BaseStream is MemoryStream memory && memory.TryGetBuffer(out var buffer))
         {
-            NbtTagType.List => ReadListTag(tagName),
-            NbtTagType.Compound => ReadCompoundTag(tagName),
-            NbtTagType.ByteArray => ReadByteArray(tagName),
-            NbtTagType.IntArray => ReadIntArray(tagName),
-            NbtTagType.LongArray => ReadLongArray(tagName),
-            _ => GetCurrentTag(firstType, tagName)
-        };
+            var start = (int)Math.Min(memory.Position, buffer.Count);
+            var tag = ReadTag(buffer.AsSpan(start), readName, out var bytesRead);
+
+            memory.Position += bytesRead;
+            return tag;
+        }
+
+        var parser = new NbtTagParser<StreamNbtInput>(new StreamNbtInput(this.BaseStream), NbtTagParser.Unlimited);
+        try
+        {
+            return parser.ReadRoot(readName);
+        }
+        finally
+        {
+            parser.Input.Dispose();
+        }
     }
 
-    internal NbtCompound ReadRootCompound()
+    private static INbtTag? ReadTag(ReadOnlySpan<byte> data, bool readName, long quota, out int bytesRead)
     {
-        var tagType = this.ReadTagType();
-        if (tagType != NbtTagType.Compound)
-            throw new InvalidOperationException("Unable to read the root compound.");
+        var parser = new NbtTagParser<SpanNbtInput>(new SpanNbtInput(data), quota);
+        var tag = parser.ReadRoot(readName);
 
-        return this.ReadCompoundTag(this.ReadString());
+        bytesRead = parser.Input.Consumed;
+        return tag;
     }
+
+    internal NbtCompound ReadRootCompound() =>
+        this.ReadNextTag() as NbtCompound ?? throw new InvalidOperationException("Unable to read the root compound.");
 
     public bool TryReadNextTag(bool readName, [MaybeNullWhen(false)] out INbtTag tag)
     {
-        var nextTag = this.ReadNextTag(readName);
-
-        if (nextTag != null)
-        {
-            tag = nextTag;
-            return true;
-        }
-
-        tag = default;
-        return false;
+        tag = this.ReadNextTag(readName);
+        return tag is not null;
     }
 
     public bool TryReadNextTag<T>(bool readName, [MaybeNullWhen(false)] out T tag) where T : INbtTag
     {
-        if (this.TryReadNextTag(readName, out INbtTag newTag) && newTag is T matchedTag)
+        if (this.ReadNextTag(readName) is T matchedTag)
         {
             tag = matchedTag;
             return true;
@@ -70,150 +112,10 @@ public readonly partial struct NbtReader(Stream input, NbtCompression compressio
         return false;
     }
 
-    public bool TryReadNextTag([MaybeNullWhen(false)] out INbtTag tag)
-    {
-        var nextTag = this.ReadNextTag();
+    public bool TryReadNextTag([MaybeNullWhen(false)] out INbtTag tag) => this.TryReadNextTag(true, out tag);
 
-        if (nextTag != null)
-        {
-            tag = nextTag;
-            return true;
-        }
-
-        tag = default;
-        return false;
-    }
-
-    public bool TryReadNextTag<T>([MaybeNullWhen(false)] out T tag) where T : INbtTag
-    {
-        if (this.TryReadNextTag(out INbtTag? newTag) && newTag is T matchedTag)
-        {
-            tag = matchedTag;
-            return true;
-        }
-
-        tag = default;
-        return false;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private INbtTag GetCurrentTag(NbtTagType type) => this.GetCurrentTag(type, this.ReadString());
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private INbtTag GetCurrentTag(NbtTagType type, string name) => type switch
-        {
-            NbtTagType.Byte => new NbtTag<byte>(name, this.ReadByte()),
-            NbtTagType.Short => new NbtTag<short>(name, this.ReadInt16()),
-            NbtTagType.Int => new NbtTag<int>(name, this.ReadInt32()),
-            NbtTagType.Long => new NbtTag<long>(name, this.ReadInt64()),
-            NbtTagType.Float => new NbtTag<float>(name, this.ReadSingle()),
-            NbtTagType.Double => new NbtTag<double>(name, this.ReadDouble()),
-            NbtTagType.String => new NbtTag<string>(name, this.ReadString()),
-            NbtTagType.Compound => this.ReadCompoundTag(name),
-            NbtTagType.List => this.ReadListTag(name),
-            NbtTagType.ByteArray => this.ReadByteArray(name),
-        NbtTagType.IntArray => this.ReadIntArray(name),
-        NbtTagType.LongArray => this.ReadLongArray(name),
-            _ => throw new InvalidOperationException($"Unknown tag type: {type}")
-        };
-
-    private NbtArray<T> ReadArray<T>(string name, Func<T> readElement) where T : struct
-    {
-        int length = ReadInt32();
-        if (length < 0)
-            throw new UnreachableException("Array length should never be below 0.");
-
-        var array = new T[length];
-        for (int i = 0; i < length; i++)
-        {
-            array[i] = readElement();
-        }
-
-        return new NbtArray<T>(name, array);
-    }
-
-    private NbtArray<byte> ReadByteArray(string name)
-    {
-        var length = ReadInt32();
-        if (length < 0)
-            throw new UnreachableException("Array length should never be below 0.");
-
-        var array = new byte[length];
-        this.BaseStream.ReadExactly(array);
-
-        return new NbtArray<byte>(name, array);
-    }
-
-    private NbtArray<int> ReadIntArray(string name)
-    {
-        var length = ReadInt32();
-        if (length < 0)
-            throw new UnreachableException("Array length should never be below 0.");
-
-        var array = GC.AllocateUninitializedArray<int>(length);
-        for (var i = 0; i < length; i++)
-            array[i] = this.ReadInt32();
-
-        return new NbtArray<int>(name, array);
-    }
-
-    private NbtArray<long> ReadLongArray(string name)
-    {
-        var length = ReadInt32();
-        if (length < 0)
-            throw new UnreachableException("Array length should never be below 0.");
-
-        var array = GC.AllocateUninitializedArray<long>(length);
-        for (var i = 0; i < length; i++)
-            array[i] = this.ReadInt64();
-
-        return new NbtArray<long>(name, array);
-    }
-
-    private NbtList ReadListTag(string name)
-    {
-        var listType = this.ReadTagType();
-
-        var length = this.ReadInt32();
-
-        if (length <= 0)
-            return new NbtList(listType, name);
-
-        var list = new NbtList(listType, name);
-        for (var i = 0; i < length; i++)
-            list.Add(this.GetCurrentTag(listType, string.Empty));
-
-        return list;
-    }
-
-    private NbtCompound ReadCompoundTag(string name)
-    {
-        var compound = new NbtCompound(name);
-
-        NbtTagType type;
-        while ((type = this.ReadTagType()) != NbtTagType.End)
-        {
-            var tag = this.GetCurrentTag(type);
-
-            compound.Add(tag);
-        }
-
-        return compound;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private NbtTagType ReadTagType()
-    {
-        var type = this.BaseStream.ReadByte();
-
-        return type switch
-        {
-            <= 0 => NbtTagType.End,
-            > (byte)NbtTagType.LongArray => throw new ArgumentOutOfRangeException(
-                $"Tag is out of range: {(NbtTagType)type}"),
-            _ => (NbtTagType)type
-        };
-    }
+    public bool TryReadNextTag<T>([MaybeNullWhen(false)] out T tag) where T : INbtTag =>
+        this.TryReadNextTag(true, out tag);
 
     // Readers are equal when they read the same stream.
     public bool Equals(NbtReader other) => ReferenceEquals(this.BaseStream, other.BaseStream);

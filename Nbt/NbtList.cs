@@ -27,6 +27,8 @@ public sealed class NbtList(NbtTagType listType, string name = "") : INbtTag, IL
         this.baseList.Add(item);
     }
 
+    public int EnsureCapacity(int capacity) => this.baseList.EnsureCapacity(capacity);
+
     public void Clear() => this.baseList.Clear();
 
     public bool Contains(INbtTag item) => this.baseList.Contains(item);
