@@ -4,6 +4,8 @@
 		<TargetFrameworks>net10.0</TargetFrameworks>
 		<OutputType>Exe</OutputType>
 		<Nullable>annotations</Nullable>
+		<!-- A benchmark app, not a package: the publish workflow pushes every package it packs. -->
+		<IsPackable>false</IsPackable>
 	</PropertyGroup>
 
 	<ItemGroup>
