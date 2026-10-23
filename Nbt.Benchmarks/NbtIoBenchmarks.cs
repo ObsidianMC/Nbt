@@ -5,7 +5,8 @@ namespace Obsidian.Nbt.Benchmarks;
 
 /// <summary>
 /// Measures raw NBT reading and writing: network NBT (an unnamed root compound, as packets carry it) and
-/// GZip-compressed files, for a chunk-sized compound and a small item-sized compound.
+/// GZip-compressed files, for a chunk-sized compound and a small item-sized compound. Chunks are written both from a
+/// tag tree and through the writer's calls, as Obsidian saves them.
 /// </summary>
 [MemoryDiagnoser]
 public class NbtIoBenchmarks
@@ -26,11 +27,25 @@ public class NbtIoBenchmarks
         this.chunkGZipPayload = WriteGZip(this.chunk);
     }
 
+    // The written bytes are left in the writer, as a packet copies them out, so copying them isn't measured.
     [Benchmark]
-    public int WriteChunkNetwork() => WriteNetwork(this.chunk).Length;
+    public int WriteChunkNetwork() => WriteNetworkLength(this.chunk);
 
     [Benchmark]
-    public int WriteItemNetwork() => WriteNetwork(this.item).Length;
+    public int WriteChunkNetworkCalls()
+    {
+        using var writer = new RawNbtWriter(true);
+
+        WriteChunk(writer);
+
+        writer.EndCompound();
+        writer.TryFinish();
+
+        return writer.Offset;
+    }
+
+    [Benchmark]
+    public int WriteItemNetwork() => WriteNetworkLength(this.item);
 
     [Benchmark]
     public INbtTag? ReadChunkNetwork() => new NbtReader(new MemoryStream(this.chunkNetworkPayload)).ReadNextTag(false);
@@ -50,6 +65,19 @@ public class NbtIoBenchmarks
     [Benchmark]
     public INbtTag? ReadChunkGZip() =>
         new NbtReader(new MemoryStream(this.chunkGZipPayload), NbtCompression.GZip).ReadNextTag();
+
+    private static int WriteNetworkLength(NbtCompound compound)
+    {
+        using var writer = new RawNbtWriter(true);
+
+        foreach (var (_, tag) in compound)
+            writer.WriteTag(tag);
+
+        writer.EndCompound();
+        writer.TryFinish();
+
+        return writer.Offset;
+    }
 
     private static byte[] WriteNetwork(NbtCompound compound)
     {
@@ -78,6 +106,80 @@ public class NbtIoBenchmarks
         }
 
         return stream.ToArray();
+    }
+
+    // The same chunk as CreateChunk, written call by call.
+    private static void WriteChunk(RawNbtWriter writer)
+    {
+        var data = new long[256];
+        for (var i = 0; i < data.Length; i++)
+            data[i] = i * 0x0123456789ABL;
+
+        var light = new byte[2048];
+
+        writer.WriteInt("DataVersion", 4325);
+        writer.WriteInt("xPos", 12);
+        writer.WriteInt("zPos", -7);
+        writer.WriteString("Status", "minecraft:full");
+        writer.WriteLong("LastUpdate", 123456789L);
+
+        writer.WriteListStart("sections", NbtTagType.Compound, 24);
+        for (var y = -4; y < 20; y++)
+        {
+            writer.WriteCompoundStart();
+            writer.WriteByte("Y", (byte)y);
+
+            writer.WriteCompoundStart("block_states");
+            writer.WriteListStart("palette", NbtTagType.Compound, 12);
+            for (var i = 0; i < 12; i++)
+            {
+                writer.WriteCompoundStart();
+                writer.WriteString("Name", $"minecraft:block_{i}");
+                writer.WriteCompoundStart("Properties");
+                writer.WriteString("facing", "north");
+                writer.WriteString("half", "bottom");
+                writer.EndCompound();
+                writer.EndCompound();
+            }
+
+            writer.EndList();
+            writer.WriteArray("data", data);
+            writer.EndCompound();
+
+            writer.WriteCompoundStart("biomes");
+            writer.WriteListStart("palette", NbtTagType.String, 2);
+            writer.WriteString("minecraft:plains");
+            writer.WriteString("minecraft:river");
+            writer.EndList();
+            writer.WriteArray("data", [0x1234L]);
+            writer.EndCompound();
+
+            writer.WriteArray("BlockLight", light);
+            writer.WriteArray("SkyLight", light);
+            writer.EndCompound();
+        }
+
+        writer.EndList();
+
+        writer.WriteCompoundStart("Heightmaps");
+        writer.WriteArray("MOTION_BLOCKING", new long[37]);
+        writer.WriteArray("WORLD_SURFACE", new long[37]);
+        writer.EndCompound();
+
+        writer.WriteListStart("block_entities", NbtTagType.Compound, 8);
+        for (var i = 0; i < 8; i++)
+        {
+            writer.WriteCompoundStart();
+            writer.WriteString("id", "minecraft:chest");
+            writer.WriteInt("x", i);
+            writer.WriteInt("y", 64);
+            writer.WriteInt("z", -i);
+            writer.WriteListStart("Items", NbtTagType.Compound, 0);
+            writer.EndList();
+            writer.EndCompound();
+        }
+
+        writer.EndList();
     }
 
     // Shaped like a saved chunk: 24 sections with block state palettes and packed data, heightmaps and block entities.
