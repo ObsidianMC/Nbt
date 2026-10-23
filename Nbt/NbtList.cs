@@ -43,7 +43,12 @@ public sealed class NbtList(NbtTagType listType, string name = "") : INbtTag, IL
 
     public void RemoveAt(int index) => this.baseList.RemoveAt(index);
 
-    public IEnumerator<INbtTag> GetEnumerator() => this.baseList.GetEnumerator();
+    /// <summary>
+    /// Enumerates the elements in order. The enumerator is a struct, so <c>foreach</c> over a list doesn't allocate.
+    /// </summary>
+    public List<INbtTag>.Enumerator GetEnumerator() => this.baseList.GetEnumerator();
+
+    IEnumerator<INbtTag> IEnumerable<INbtTag>.GetEnumerator() => this.GetEnumerator();
 
     IEnumerator IEnumerable.GetEnumerator() => this.GetEnumerator();
 

@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Compression;
 using System.Reflection;
@@ -387,15 +388,14 @@ public static class NbtSerializer
         var instance = Activator.CreateInstance(targetType)
             ?? throw new NotSupportedException($"Type '{targetType}' must have a parameterless constructor.");
 
-        var comparer = options.PropertyNameCaseInsensitive ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
-        var tags = new Dictionary<string, INbtTag>(compound.Count, comparer);
-
-        foreach (var (tagName, tagValue) in compound)
-            tags.Add(tagName, tagValue);
+        // The compound already matches names exactly; only case-insensitive matching needs its own lookup.
+        var caseInsensitiveTags = options.PropertyNameCaseInsensitive
+            ? new Dictionary<string, INbtTag>(compound, StringComparer.OrdinalIgnoreCase)
+            : null;
 
         foreach (var property in metadata.DeserializableProperties)
         {
-            if (!tags.TryGetValue(GetMemberName(property, options), out var tag))
+            if (!TryGetMemberTag(compound, caseInsensitiveTags, GetMemberName(property, options), out var tag))
                 continue;
 
             property.Info.SetValue(instance, DeserializeTag(tag, property.Info.PropertyType, options));
@@ -406,7 +406,7 @@ public static class NbtSerializer
 
         foreach (var field in metadata.SerializableFields)
         {
-            if (!tags.TryGetValue(GetMemberName(field, options), out var tag))
+            if (!TryGetMemberTag(compound, caseInsensitiveTags, GetMemberName(field, options), out var tag))
                 continue;
 
             field.Info.SetValue(instance, DeserializeTag(tag, field.Info.FieldType, options));
@@ -414,6 +414,15 @@ public static class NbtSerializer
 
         return instance;
     }
+
+    private static bool TryGetMemberTag(
+        NbtCompound compound,
+        Dictionary<string, INbtTag>? caseInsensitiveTags,
+        string name,
+        [MaybeNullWhen(false)] out INbtTag tag) =>
+        caseInsensitiveTags is not null
+            ? caseInsensitiveTags.TryGetValue(name, out tag)
+            : compound.TryGetTag(name, out tag);
 
     private static object DeserializeList(NbtList list, Type targetType, Type elementType, NbtSerializerOptions options)
     {

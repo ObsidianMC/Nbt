@@ -6,6 +6,9 @@ namespace Obsidian.Nbt;
 
 public partial class RawNbtWriter
 {
+    // Strings up to this long try the one-pass ASCII path first; longer ones go straight to the vectorized path.
+    private const int ShortStringLength = 32;
+
     public void WriteString(string value)
     {
         ArgumentNullException.ThrowIfNull(value);
@@ -129,6 +132,9 @@ public partial class RawNbtWriter
     // Java's DataOutput.writeUTF format: an unsigned 16-bit byte count, then modified UTF-8. Clients can't read more.
     private void WriteStringRaw(string value)
     {
+        if (value.Length <= ShortStringLength && this.TryWriteShortAsciiRaw(value))
+            return;
+
         if (!ModifiedUtf8.TryGetByteCount(value, out var byteCount))
         {
             throw new ArgumentException(
@@ -142,6 +148,33 @@ public partial class RawNbtWriter
         ModifiedUtf8.GetBytesCommon(value, destination[sizeof(ushort)..]);
 
         this.offset += destination.Length;
+    }
+
+    /// <summary>
+    /// Writes a short string in one pass when it is ASCII without \0, which modified UTF-8 encodes as one byte per
+    /// char. Nearly all names and many values are; the general path counts the bytes before encoding them.
+    /// </summary>
+    /// <returns>False, with nothing written, when the string needs the general path.</returns>
+    private bool TryWriteShortAsciiRaw(string value)
+    {
+        this.Reserve(sizeof(ushort) + value.Length);
+
+        var destination = this.data.AsSpan(this.offset + sizeof(ushort), value.Length);
+        for (var i = 0; i < destination.Length; i++)
+        {
+            var c = value[i];
+
+            // \0 and non-ASCII chars take more than one byte.
+            if (c - 1u >= 0x7Fu)
+                return false;
+
+            destination[i] = (byte)c;
+        }
+
+        BinaryPrimitives.WriteUInt16BigEndian(this.data.AsSpan(this.offset), (ushort)value.Length);
+        this.offset += sizeof(ushort) + value.Length;
+
+        return true;
     }
 
     private void WriteByteRaw(byte value)

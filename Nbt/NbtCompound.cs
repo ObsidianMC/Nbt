@@ -169,8 +169,13 @@ public sealed class NbtCompound : INbtTag, IEnumerable<KeyValuePair<string, INbt
         return !exists;
     }
 
-    public IEnumerator<KeyValuePair<string, INbtTag>> GetEnumerator() =>
-        this.children.GetEnumerator();
+    /// <summary>
+    /// Enumerates the entries by key. The enumerator is a struct, so <c>foreach</c> over a compound doesn't allocate.
+    /// </summary>
+    public Dictionary<string, INbtTag>.Enumerator GetEnumerator() => this.children.GetEnumerator();
+
+    IEnumerator<KeyValuePair<string, INbtTag>> IEnumerable<KeyValuePair<string, INbtTag>>.GetEnumerator() =>
+        this.GetEnumerator();
 
     IEnumerator IEnumerable.GetEnumerator() => this.GetEnumerator();
 
