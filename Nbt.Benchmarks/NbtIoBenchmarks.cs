@@ -70,8 +70,7 @@ public class NbtIoBenchmarks
     {
         using var writer = new RawNbtWriter(true);
 
-        foreach (var (_, tag) in compound)
-            writer.WriteTag(tag);
+        writer.WriteEntries(compound);
 
         writer.EndCompound();
         writer.TryFinish();
@@ -83,8 +82,7 @@ public class NbtIoBenchmarks
     {
         using var writer = new RawNbtWriter(true);
 
-        foreach (var (_, tag) in compound)
-            writer.WriteTag(tag);
+        writer.WriteEntries(compound);
 
         writer.EndCompound();
         writer.TryFinish();
@@ -98,8 +96,7 @@ public class NbtIoBenchmarks
 
         using (var writer = new NbtWriterStream(stream, NbtCompression.GZip, ""))
         {
-            foreach (var (_, tag) in compound)
-                writer.WriteTag(tag);
+            writer.WriteEntries(compound);
 
             writer.EndCompound();
             writer.TryFinish();

@@ -129,6 +129,19 @@ public sealed partial class RawNbtWriter : INbtWriter
     /// <summary>Writes a tag as an element of the open list, ignoring its name.</summary>
     public void WriteListTag(INbtTag tag) => this.WriteTag(tag, null);
 
+    /// <summary>
+    /// Writes every entry of <paramref name="compound"/> into the open compound, each named with its key: the
+    /// compound's contents without its own type, name and end, for example to write it as the root.
+    /// </summary>
+    public void WriteEntries(NbtCompound compound)
+    {
+        if (this.RootType != NbtTagType.Compound)
+            throw new InvalidOperationException("There is no open compound to write the entries into.");
+
+        foreach (var (key, child) in compound)
+            this.WriteTag(child, key);
+    }
+
     public void WriteArray(string? name, ReadOnlySpan<int> values)
     {
         this.WriteTagHeader(NbtTagType.IntArray, name);

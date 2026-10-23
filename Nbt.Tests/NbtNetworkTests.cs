@@ -214,6 +214,7 @@ public class NbtNetworkTests
 
         writer.WriteListStart("list", NbtTagType.Int, 1);
         Assert.Throws<InvalidOperationException>(() => writer.WriteString("x"));
+        Assert.Throws<InvalidOperationException>(() => writer.WriteEntries(new NbtCompound()));
         Assert.Throws<InvalidOperationException>(() => writer.EndList());
         writer.WriteInt(1);
         Assert.Throws<InvalidOperationException>(() => writer.WriteInt(2));
@@ -288,8 +289,7 @@ public class NbtNetworkTests
     {
         using var writer = new RawNbtWriter(true);
 
-        foreach (var (_, tag) in compound)
-            writer.WriteTag(tag);
+        writer.WriteEntries(compound);
 
         writer.EndCompound();
         writer.TryFinish();

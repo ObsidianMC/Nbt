@@ -39,6 +39,8 @@ public interface INbtWriter : IDisposable, IAsyncDisposable
 
     public void WriteListTag(INbtTag tag);
 
+    public void WriteEntries(NbtCompound compound);
+
     public void WriteArray(string? name, ReadOnlySpan<int> values);
     public void WriteArray(string? name, ReadOnlySpan<long> values);
     public void WriteArray(string? name, ReadOnlySpan<byte> values);

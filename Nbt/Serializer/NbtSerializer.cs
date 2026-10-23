@@ -53,8 +53,7 @@ public static class NbtSerializer
 
         using var writer = new RawNbtWriter(rootName);
 
-        foreach (var (_, child) in compound)
-            writer.WriteTag(child);
+        writer.WriteEntries(compound);
 
         writer.EndCompound();
         writer.TryFinish();
@@ -73,8 +72,7 @@ public static class NbtSerializer
 
         await using var writer = new RawNbtWriter(rootName);
 
-        foreach (var (_, child) in compound)
-            writer.WriteTag(child);
+        writer.WriteEntries(compound);
 
         writer.EndCompound();
         await writer.TryFinishAsync();
