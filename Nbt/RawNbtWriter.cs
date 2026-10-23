@@ -120,6 +120,11 @@ public sealed partial class RawNbtWriter : INbtWriter
             throw new InvalidOperationException("There is no open compound to end.");
 
         this.WriteByteRaw((byte)NbtTagType.End);
+
+        ref var frame = ref this.frames[this.depth - 1];
+        if (frame.CheckNames)
+            ReleaseNames(ref frame);
+
         this.depth--;
     }
 
@@ -367,6 +372,18 @@ public sealed partial class RawNbtWriter : INbtWriter
 
         frame.NameCount++;
         return frame.HashedNames!.Add(name);
+    }
+
+    // Drops an ended compound's names, so the reused frame doesn't keep them alive, but keeps the storage.
+    private static void ReleaseNames(ref Frame frame)
+    {
+        if (frame.ScannedNames is not null)
+            Array.Clear(frame.ScannedNames, 0, Math.Min(frame.NameCount, MaxScannedNames));
+
+        if (frame.NameCount > MaxScannedNames)
+            frame.HashedNames!.Clear();
+
+        frame.NameCount = 0;
     }
 
     private ref Frame PushFrame(NbtTagType type)
