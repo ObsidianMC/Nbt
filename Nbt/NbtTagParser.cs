@@ -73,7 +73,7 @@ internal ref struct NbtTagParser<TInput>(TInput input, long quota)
         // Java's DataInput.readUTF: an unsigned 16-bit byte count, then modified UTF-8.
         var length = BinaryPrimitives.ReadUInt16BigEndian(this.input.Read(sizeof(ushort)));
 
-        return length == 0 ? string.Empty : ModifiedUtf8.GetString(this.input.Read(length));
+        return length == 0 ? string.Empty : NbtStringCache.GetString(this.input.Read(length));
     }
 
     // The charges below are vanilla's NbtAccounter estimates for each tag type.

@@ -214,6 +214,7 @@ public class NbtNetworkTests
 
         writer.WriteListStart("list", NbtTagType.Int, 1);
         Assert.Throws<InvalidOperationException>(() => writer.WriteString("x"));
+        Assert.Throws<InvalidOperationException>(() => writer.WriteEntries(new NbtCompound()));
         Assert.Throws<InvalidOperationException>(() => writer.EndList());
         writer.WriteInt(1);
         Assert.Throws<InvalidOperationException>(() => writer.WriteInt(2));
@@ -221,6 +222,33 @@ public class NbtNetworkTests
 
         Assert.Throws<ArgumentException>(() => writer.WriteInt("list", 1));
         Assert.Throws<InvalidOperationException>(() => writer.TryFinish());
+    }
+
+    [Theory]
+    [InlineData(3)] // Checked by scanning the names.
+    [InlineData(20)] // Past the scan, checked by hashing.
+    public void WriterRejectsDuplicateNames(int count)
+    {
+        using var writer = new RawNbtWriter(true);
+
+        // Sibling compounds reuse one frame, so each must start with no names.
+        for (var compound = 0; compound < 2; compound++)
+        {
+            writer.WriteCompoundStart($"c{compound}");
+
+            for (var i = 0; i < count; i++)
+                writer.WriteInt($"n{i}", i);
+
+            Assert.Throws<ArgumentException>(() => writer.WriteInt("n0", 0));
+            Assert.Throws<ArgumentException>(() => writer.WriteInt($"n{count - 1}", 0));
+            writer.EndCompound();
+        }
+
+        writer.EndCompound();
+        writer.TryFinish();
+
+        var root = Assert.IsType<NbtCompound>(NbtReader.ReadTag(writer.Data, false, out _));
+        Assert.Equal(count, Assert.IsType<NbtCompound>(root["c1"]).Count);
     }
 
     // A root list holding a list holding a list..., `depth` lists in all, the innermost empty.
@@ -261,8 +289,7 @@ public class NbtNetworkTests
     {
         using var writer = new RawNbtWriter(true);
 
-        foreach (var (_, tag) in compound)
-            writer.WriteTag(tag);
+        writer.WriteEntries(compound);
 
         writer.EndCompound();
         writer.TryFinish();

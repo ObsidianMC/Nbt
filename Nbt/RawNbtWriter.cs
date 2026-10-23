@@ -16,6 +16,9 @@ public sealed partial class RawNbtWriter : INbtWriter
 {
     private const int InitialBufferSize = 4096;
 
+    // Compounds check this many names for duplicates by scanning them before switching to a hash set.
+    private const int MaxScannedNames = 8;
+
     private byte[] data;
     private int offset;
     private bool disposed;
@@ -62,8 +65,8 @@ public sealed partial class RawNbtWriter : INbtWriter
         this.WriteTagHeader(NbtTagType.Compound, name);
 
         ref var frame = ref this.PushFrame(NbtTagType.Compound);
-        frame.Names ??= new HashSet<string>(StringComparer.Ordinal);
-        frame.Names.Clear();
+        frame.CheckNames = true;
+        frame.NameCount = 0;
     }
 
     /// <summary>Starts a list of <paramref name="length"/> elements of type <paramref name="listType"/>.</summary>
@@ -117,6 +120,11 @@ public sealed partial class RawNbtWriter : INbtWriter
             throw new InvalidOperationException("There is no open compound to end.");
 
         this.WriteByteRaw((byte)NbtTagType.End);
+
+        ref var frame = ref this.frames[this.depth - 1];
+        if (frame.CheckNames)
+            ReleaseNames(ref frame);
+
         this.depth--;
     }
 
@@ -125,6 +133,19 @@ public sealed partial class RawNbtWriter : INbtWriter
 
     /// <summary>Writes a tag as an element of the open list, ignoring its name.</summary>
     public void WriteListTag(INbtTag tag) => this.WriteTag(tag, null);
+
+    /// <summary>
+    /// Writes every entry of <paramref name="compound"/> into the open compound, each named with its key: the
+    /// compound's contents without its own type, name and end, for example to write it as the root.
+    /// </summary>
+    public void WriteEntries(NbtCompound compound)
+    {
+        if (this.RootType != NbtTagType.Compound)
+            throw new InvalidOperationException("There is no open compound to write the entries into.");
+
+        foreach (var (key, child) in compound)
+            this.WriteTag(child, key);
+    }
 
     public void WriteArray(string? name, ReadOnlySpan<int> values)
     {
@@ -215,7 +236,10 @@ public sealed partial class RawNbtWriter : INbtWriter
         switch (tag)
         {
             case NbtCompound compound:
-                this.WriteCompoundStart(name!);
+                this.WriteTagHeader(NbtTagType.Compound, name);
+
+                // A compound's keys are unique already, so its entries skip the duplicate name check.
+                this.PushFrame(NbtTagType.Compound).CheckNames = false;
 
                 // The key is what the compound is read back by, even when it differs from the child's Name.
                 foreach (var (key, child) in compound)
@@ -302,7 +326,7 @@ public sealed partial class RawNbtWriter : INbtWriter
         if (name is null)
             throw new ArgumentException($"Tags inside a compound tag must have a name. Tag({type})");
 
-        if (!frame.Names!.Add(name))
+        if (frame.CheckNames && !TryAddName(ref frame, name))
             throw new ArgumentException($"Tag with name {name} already exists.");
 
         this.WriteByteRaw((byte)type);
@@ -320,6 +344,46 @@ public sealed partial class RawNbtWriter : INbtWriter
 
         if (writeName && !this.Networked)
             this.WriteStringRaw(name ?? string.Empty);
+    }
+
+    /// <summary>Records a name written to a compound, or returns false when it already has it.</summary>
+    private static bool TryAddName(ref Frame frame, string name)
+    {
+        // Most compounds have a few entries, which a scan checks faster than hashing.
+        if (frame.NameCount < MaxScannedNames)
+        {
+            var names = frame.ScannedNames ??= new string[MaxScannedNames];
+            for (var i = 0; i < frame.NameCount; i++)
+            {
+                if (string.Equals(names[i], name))
+                    return false;
+            }
+
+            names[frame.NameCount++] = name;
+            return true;
+        }
+
+        if (frame.NameCount == MaxScannedNames)
+        {
+            frame.HashedNames ??= new HashSet<string>(StringComparer.Ordinal);
+            frame.HashedNames.Clear();
+            frame.HashedNames.UnionWith(frame.ScannedNames!);
+        }
+
+        frame.NameCount++;
+        return frame.HashedNames!.Add(name);
+    }
+
+    // Drops an ended compound's names, so the reused frame doesn't keep them alive, but keeps the storage.
+    private static void ReleaseNames(ref Frame frame)
+    {
+        if (frame.ScannedNames is not null)
+            Array.Clear(frame.ScannedNames, 0, Math.Min(frame.NameCount, MaxScannedNames));
+
+        if (frame.NameCount > MaxScannedNames)
+            frame.HashedNames!.Clear();
+
+        frame.NameCount = 0;
     }
 
     private ref Frame PushFrame(NbtTagType type)
@@ -352,7 +416,12 @@ public sealed partial class RawNbtWriter : INbtWriter
         public int Length;
         public int Count;
 
-        // Compounds: the names written so far, to reject duplicates. Kept between uses of the frame to reuse it.
-        public HashSet<string>? Names;
+        // Compounds: the names written so far, to reject duplicates. The first few are scanned, the rest hashed;
+        // both collections are kept between uses of the frame to reuse them. Compounds written from an NbtCompound
+        // don't check, since their keys can't repeat.
+        public bool CheckNames;
+        public int NameCount;
+        public string[]? ScannedNames;
+        public HashSet<string>? HashedNames;
     }
 }

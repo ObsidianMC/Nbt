@@ -74,6 +74,9 @@ public readonly partial struct NbtWriterStream : INbtWriter, IEquatable<NbtWrite
     /// <inheritdoc cref="RawNbtWriter.WriteListTag"/>
     public void WriteListTag(INbtTag tag) => this.writer.WriteListTag(tag);
 
+    /// <inheritdoc cref="RawNbtWriter.WriteEntries"/>
+    public void WriteEntries(NbtCompound compound) => this.writer.WriteEntries(compound);
+
     public void WriteArray(string? name, ReadOnlySpan<int> values) => this.writer.WriteArray(name, values);
 
     public void WriteArray(string? name, ReadOnlySpan<long> values) => this.writer.WriteArray(name, values);
