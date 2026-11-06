@@ -157,7 +157,8 @@ public class Nbt(ITestOutputHelper output)
             new NbtTag<double>("negative", -1.5),
             new NbtTag<float>("float", 2.75f),
             new NbtTag<long>("long", 1L << 40),
-            new NbtTag<string>("text", "1")
+            new NbtTag<string>("text", "1"),
+            new NbtTag<byte>("byte", 255)
         };
 
         Assert.Equal(300f, compound.GetFloat("int"));
@@ -167,6 +168,7 @@ public class Nbt(ITestOutputHelper output)
         Assert.Equal(2L, compound.GetLong("float"));
         Assert.Equal(2.75, compound.GetDouble("float"));
         Assert.Equal(0, compound.GetInt("long"));
+        Assert.Equal(-1, compound.GetInt("byte"));
 
         // Only numbers convert.
         Assert.False(compound.TryGetTagValue<int>("text", out _));
