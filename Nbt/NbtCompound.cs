@@ -62,13 +62,15 @@ public sealed class NbtCompound : INbtTag, IEnumerable<KeyValuePair<string, INbt
         return false;
     }
 
+    /// <summary>
+    /// Gets a tag's value as <typeparamref name="TValue"/>. Like vanilla's numeric tags, a number tag of any type reads
+    /// as any number type, so data written by hand or converted from JSON (where a float's <c>1</c> is an int) reads as
+    /// it does in vanilla.
+    /// </summary>
     public bool TryGetTagValue<TValue>(string name, [MaybeNullWhen(false)] out TValue value)
     {
-        if (this.TryGetTag<NbtTag<TValue>>(name, out var tag))
-        {
-            value = tag.Value;
-            return true;
-        }
+        if (this.TryGetTag(name, out var tag))
+            return TryReadValue(tag, out value);
 
         value = default;
         return false;
@@ -179,7 +181,64 @@ public sealed class NbtCompound : INbtTag, IEnumerable<KeyValuePair<string, INbt
 
     IEnumerator IEnumerable.GetEnumerator() => this.GetEnumerator();
 
-    private T? GetTagValue<T>(string name) => this.TryGetTag(name, out var tag) && tag is NbtTag<T> actualTag
-        ? actualTag.Value
+    private T? GetTagValue<T>(string name) => this.TryGetTagValue<T>(name, out var value)
+        ? value
         : throw new TagNotFoundException(name);
+
+    private static bool TryReadValue<TValue>(INbtTag tag, [MaybeNullWhen(false)] out TValue value)
+    {
+        if (tag is NbtTag<TValue> exact)
+        {
+            value = exact.Value!;
+            return true;
+        }
+
+        var converted = tag switch
+        {
+            NbtTag<byte> number => FromWhole<TValue>(number.Value),
+            NbtTag<short> number => FromWhole<TValue>(number.Value),
+            NbtTag<int> number => FromWhole<TValue>(number.Value),
+            NbtTag<long> number => FromWhole<TValue>(number.Value),
+            NbtTag<float> number => FromReal<TValue>(number.Value),
+            NbtTag<double> number => FromReal<TValue>(number.Value),
+            _ => null
+        };
+
+        if (converted is TValue result)
+        {
+            value = result;
+            return true;
+        }
+
+        value = default;
+        return false;
+    }
+
+    // Vanilla's integer tags keep the low bits of a narrower type (an int's 300 is a byte's 44).
+    private static object? FromWhole<TValue>(long number) => System.Type.GetTypeCode(typeof(TValue)) switch
+    {
+        TypeCode.Byte => unchecked((byte)number),
+        TypeCode.Int16 => unchecked((short)number),
+        TypeCode.Int32 => unchecked((int)number),
+        TypeCode.Int64 => number,
+        TypeCode.Single => (float)number,
+        TypeCode.Double => (double)number,
+        _ => null
+    };
+
+    // Vanilla's float and double tags floor to an integer, as Mth.floor does, before keeping its low bits.
+    private static object? FromReal<TValue>(double number)
+    {
+        if (typeof(TValue) == typeof(float))
+            return (float)number;
+
+        if (typeof(TValue) == typeof(double))
+            return number;
+
+        var floored = Math.Floor(number);
+
+        return typeof(TValue) == typeof(long)
+            ? (long)floored
+            : FromWhole<TValue>((int)floored);
+    }
 }

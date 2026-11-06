@@ -148,6 +148,32 @@ public class Nbt(ITestOutputHelper output)
     }
 
     [Fact]
+    public void NumberTagsReadAsAnyNumberType()
+    {
+        // Like vanilla's numeric tags: floating values floor to integers, and narrower integers keep the low bits.
+        var compound = new NbtCompound
+        {
+            new NbtTag<int>("int", 300),
+            new NbtTag<double>("negative", -1.5),
+            new NbtTag<float>("float", 2.75f),
+            new NbtTag<long>("long", 1L << 40),
+            new NbtTag<string>("text", "1")
+        };
+
+        Assert.Equal(300f, compound.GetFloat("int"));
+        Assert.Equal(300d, compound.GetDouble("int"));
+        Assert.Equal(44, compound.GetByte("int"));
+        Assert.Equal(-2, compound.GetInt("negative"));
+        Assert.Equal(2L, compound.GetLong("float"));
+        Assert.Equal(2.75, compound.GetDouble("float"));
+        Assert.Equal(0, compound.GetInt("long"));
+
+        // Only numbers convert.
+        Assert.False(compound.TryGetTagValue<int>("text", out _));
+        Assert.False(compound.TryGetTagValue<string>("int", out _));
+    }
+
+    [Fact]
     public void WriteListsInsideLists()
     {
         var stream = new MemoryStream();
