@@ -195,7 +195,8 @@ public sealed class NbtCompound : INbtTag, IEnumerable<KeyValuePair<string, INbt
 
         var converted = tag switch
         {
-            NbtTag<byte> number => FromWhole<TValue>(number.Value),
+            // NBT bytes are signed, as vanilla reads them, though they're held as bytes.
+            NbtTag<byte> number => FromWhole<TValue>(unchecked((sbyte)number.Value)),
             NbtTag<short> number => FromWhole<TValue>(number.Value),
             NbtTag<int> number => FromWhole<TValue>(number.Value),
             NbtTag<long> number => FromWhole<TValue>(number.Value),
