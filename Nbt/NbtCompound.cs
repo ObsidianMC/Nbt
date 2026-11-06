@@ -200,8 +200,8 @@ public sealed class NbtCompound : INbtTag, IEnumerable<KeyValuePair<string, INbt
             NbtTag<short> number => FromWhole<TValue>(number.Value),
             NbtTag<int> number => FromWhole<TValue>(number.Value),
             NbtTag<long> number => FromWhole<TValue>(number.Value),
-            NbtTag<float> number => FromReal<TValue>(number.Value),
-            NbtTag<double> number => FromReal<TValue>(number.Value),
+            NbtTag<float> number => FromReal<TValue>(number.Value, truncatesToLong: true),
+            NbtTag<double> number => FromReal<TValue>(number.Value, truncatesToLong: false),
             _ => null
         };
 
@@ -227,8 +227,9 @@ public sealed class NbtCompound : INbtTag, IEnumerable<KeyValuePair<string, INbt
         _ => null
     };
 
-    // Vanilla's float and double tags floor to an integer, as Mth.floor does, before keeping its low bits.
-    private static object? FromReal<TValue>(double number)
+    // Vanilla's float and double tags floor to an integer, as Mth.floor does, before keeping its low bits. Only a float
+    // tag's long truncates instead (FloatTag.longValue): -1.25f is -1 as a long, but -2 as an int.
+    private static object? FromReal<TValue>(double number, bool truncatesToLong)
     {
         if (typeof(TValue) == typeof(float))
             return (float)number;
@@ -236,10 +237,9 @@ public sealed class NbtCompound : INbtTag, IEnumerable<KeyValuePair<string, INbt
         if (typeof(TValue) == typeof(double))
             return number;
 
-        var floored = Math.Floor(number);
+        if (typeof(TValue) == typeof(long))
+            return truncatesToLong ? (long)number : (long)Math.Floor(number);
 
-        return typeof(TValue) == typeof(long)
-            ? (long)floored
-            : FromWhole<TValue>((int)floored);
+        return FromWhole<TValue>((int)Math.Floor(number));
     }
 }
